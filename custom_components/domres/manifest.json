@@ -1,12 +1,16 @@
 {
   "domain": "domres",
   "name": "ДомРесурс",
-  "codeowners": [],
+  "codeowners": [
+    "@S0ft0r"
+  ],
   "config_flow": true,
   "dependencies": [],
   "documentation": "https://domres.ru",
   "integration_type": "hub",
-  "iot_class": "cloud_polling",
+  "documentation": "https://github.com/S0ft0r/ha-domres",
+  "iot_class": "local_push",
+  "issue_tracker": "https://github.com/S0ft0r/ha-domres/issues",
   "requirements": [],
   "version": "0.1.1"
 }
