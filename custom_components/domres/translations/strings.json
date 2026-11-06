@@ -1,0 +1,27 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "DomRes",
+        "description": "Sign in with your DomRes account. The login type is detected automatically. Leave the optional Customer header blank unless its value is known for your account.",
+        "data": {
+          "username": "Phone or email",
+          "password": "Password",
+          "customer": "API Customer header (optional)"
+        },
+        "data_description": {
+          "username": "Enter the phone number or email used at registration as your login."
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Login failed. Check the phone number or email, password, and optional Customer header value.",
+      "cannot_connect": "Could not connect to DomRes or retrieve the account list.",
+      "verification_required": "The service requested an additional sign-in verification step that is not supported yet.",
+      "no_accounts": "No accounts were found for this user."
+    },
+    "abort": {
+      "already_configured": "This account is already configured."
+    }
+  }
+}
