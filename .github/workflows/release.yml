@@ -2,79 +2,112 @@ name: Release
 
 on:
   push:
-    tags:
-      - "v0.1.*"
+    branches:
+      - main
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  release:
-    name: Validate and publish DomRes release
+  validate:
+    name: Validate before publishing
     runs-on: ubuntu-24.04
     steps:
-      - name: Check out repository
+      - name: Check out repository and tags
         uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
           python-version: "3.13"
 
-      - name: Run tests and strict validation
-        run: |
-          python -m unittest discover -s tests -v
-          python scripts/validate.py --strict-release
+      - name: Run unit tests
+        run: python -m unittest discover -s tests -v
 
-      - name: Ensure tag matches integration version
-        env:
-          TAG: ${{ github.ref_name }}
-        run: |
-          python - <<'PY'
-          import json
-          import os
-          from pathlib import Path
+      - name: Run local validator
+        run: python scripts/validate.py --strict-release
 
-          version = json.loads(Path("custom_components/domres/manifest.json").read_text(encoding="utf-8"))["version"]
-          tag = os.environ["TAG"]
-          if tag != f"v{version}":
-              raise SystemExit(f"Tag {tag!r} does not match manifest version {version!r}")
-          PY
+      - name: Hassfest
+        uses: home-assistant/actions/hassfest@master
+
+      - name: HACS validation
+        if: ${{ hashFiles('LICENSE*') != '' }}
+        uses: hacs/action@main
+        with:
+          category: integration
+
+      - name: Require publication metadata
+        run: python scripts/validate.py --strict-release --strict-publication
+
+  release:
+    name: Publish a newly validated version
+    needs: validate
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Check out validated commit and all tags
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Skip duplicate or older release versions
+        id: release_gate
+        run: python scripts/release_gate.py
+
+      - name: Wait for main to settle and confirm this commit is current
+        if: steps.release_gate.outputs.should_release == 'true'
+        run: |
+          sleep 120
+          git fetch origin main --tags
+          MAIN_SHA="$(git rev-parse origin/main)"
+          if [ "$MAIN_SHA" != "$GITHUB_SHA" ]; then
+            echo "main advanced after validation; refusing to publish a stale commit"
+            exit 1
+          fi
 
       - name: Build installable integration ZIP
+        if: steps.release_gate.outputs.should_release == 'true'
         run: python scripts/build_release.py --component-zip domres.zip
 
       - name: Extract release notes
+        if: steps.release_gate.outputs.should_release == 'true'
         env:
-          VERSION: ${{ github.ref_name }}
+          VERSION: ${{ steps.release_gate.outputs.version }}
         run: |
           python - <<'PY'
           import os
           from pathlib import Path
           import re
 
-          version = os.environ["VERSION"].removeprefix("v")
+          version = os.environ["VERSION"]
           changelog = Path("CHANGELOG.md").read_text(encoding="utf-8")
-          pattern = rf"(?ms)^## \[{re.escape(version)}\][^\n]*\n.*?(?=^## \[|\Z)"
-          match = re.search(pattern, changelog)
-          notes = match.group(0).strip() if match else "Автоматическая сборка read-only интеграции ДомРесурс."
-          Path("release_notes.md").write_text(notes + "\n", encoding="utf-8")
+          pattern = re.compile(
+              r"(?ms)^## \[" + re.escape(version) + r"\][^\n]*\n.*?(?=^## \[|\Z)"
+          )
+          match = pattern.search(changelog)
+          if match is None:
+              raise SystemExit(f"No changelog section found for {version}")
+          Path("release_notes.md").write_text(match.group(0).strip() + "\n", encoding="utf-8")
           PY
 
-      - name: Create or update GitHub Release
+      - name: Create GitHub Release
+        if: steps.release_gate.outputs.should_release == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ github.ref_name }}
-          VERSION: ${{ github.ref_name }}
+          TAG: ${{ steps.release_gate.outputs.tag }}
+          VERSION: ${{ steps.release_gate.outputs.version }}
         run: |
-          VERSION="${VERSION#v}"
           DELTA="release/domres_${VERSION}_changed_files.zip"
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" "$DELTA" domres.zip --clobber
-            gh release edit "$TAG" --title "ДомРесурс $TAG" --notes-file release_notes.md
-          else
-            gh release create "$TAG" "$DELTA" domres.zip \
-              --target "$GITHUB_SHA" \
-              --title "ДомРесурс $TAG" \
-              --notes-file release_notes.md
-          fi
+          gh release create "$TAG" "$DELTA" domres.zip \
+            --target "$GITHUB_SHA" \
+            --title "ДомРесурс $TAG" \
+            --notes-file release_notes.md
