@@ -176,7 +176,7 @@ class DomResApi:
         return [item for item in result if isinstance(item, dict)]
 
     async def async_get_account_snapshot(self, account: dict[str, Any]) -> dict[str, Any]:
-        """Fetch only the known read-only balance, availability, and meter data."""
+        """Fetch the known read-only balance, indication status, availability, and meter data."""
         account_id = _account_id(account)
         if account_id is None:
             raise DomResApiError("В ответе списка лицевых счетов нет идентификатора")
@@ -186,6 +186,10 @@ class DomResApi:
             "availability": (
                 "GET",
                 f"/v1/accounts/{encoded_id}/indications/after-days",
+            ),
+            "indication_status": (
+                "GET",
+                f"/v1/accounts/{encoded_id}/indications/status",
             ),
             "meters": ("GET", f"/v6/accounts/{encoded_id}/meters/info"),
         }

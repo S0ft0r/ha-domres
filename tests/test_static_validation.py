@@ -16,10 +16,56 @@ class StaticValidationTests(unittest.TestCase):
     def test_retired_indication_binary_sensor_is_not_forwarded_and_is_cleaned_up(self) -> None:
         component = Path(__file__).resolve().parents[1] / "custom_components/domres"
         setup_source = (component / "__init__.py").read_text(encoding="utf-8")
-        self.assertIn("PLATFORMS: list[Platform] = [Platform.SENSOR]", setup_source)
+        self.assertIn(
+            "PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.NUMBER, Platform.BUTTON]",
+            setup_source,
+        )
         self.assertIn("async_entries_for_config_entry", setup_source)
         self.assertIn("registry.async_remove", setup_source)
         self.assertFalse((component / "binary_sensor.py").exists())
+
+    def test_last_readings_sensor_uses_requested_short_friendly_name(self) -> None:
+        component = Path(__file__).resolve().parents[1] / "custom_components/domres"
+        sensor_source = (component / "sensor.py").read_text(encoding="utf-8")
+        last_readings_class = sensor_source.split("class DomResLastReadingSensor", 1)[1].split(
+            "\n\nasync def async_setup_entry", 1
+        )[0]
+        self.assertIn("_attr_has_entity_name = False", last_readings_class)
+        self.assertIn('name = "Последние показания"', last_readings_class)
+        self.assertNotIn("meter['name']", last_readings_class)
+
+    def test_reading_input_button_is_visible_but_never_sends_network_requests(self) -> None:
+        component = Path(__file__).resolve().parents[1] / "custom_components/domres"
+        setup_source = (component / "__init__.py").read_text(encoding="utf-8")
+        button_source = (component / "button.py").read_text(encoding="utf-8")
+        number_source = (component / "number.py").read_text(encoding="utf-8")
+        self.assertIn("Platform.NUMBER", setup_source)
+        self.assertIn("Platform.BUTTON", setup_source)
+        self.assertIn("async def async_press", button_source)
+        self.assertIn("HomeAssistantError", button_source)
+        self.assertIn("reading_not_below_previous", button_source)
+        self.assertIn("def native_min_value", number_source)
+        self.assertIn("reading_not_below_previous", number_source)
+        self.assertNotIn("coordinator.api", button_source)
+        self.assertNotIn("_async_request", button_source)
+
+    def test_deadline_event_uses_configured_threshold(self) -> None:
+        component = Path(__file__).resolve().parents[1] / "custom_components/domres"
+        flow_source = (component / "config_flow.py").read_text(encoding="utf-8")
+        coordinator_source = (component / "coordinator.py").read_text(encoding="utf-8")
+        self.assertIn("CONF_DEADLINE_DAYS", flow_source)
+        self.assertIn("deadline_days", coordinator_source)
+        self.assertIn("async_fire", coordinator_source)
+
+    def test_unpaid_event_is_keyed_by_status_period_and_persisted(self) -> None:
+        component = Path(__file__).resolve().parents[1] / "custom_components/domres"
+        api_source = (component / "api.py").read_text(encoding="utf-8")
+        event_source = (component / "events.py").read_text(encoding="utf-8")
+        coordinator_source = (component / "coordinator.py").read_text(encoding="utf-8")
+        self.assertIn("/indications/status", api_source)
+        self.assertIn("datePeriodFrom", event_source)
+        self.assertIn("datePeriodTo", event_source)
+        self.assertIn("async_save", coordinator_source)
 
 
 if __name__ == "__main__":

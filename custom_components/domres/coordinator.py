@@ -6,6 +6,7 @@ import logging
 from typing import Any
 
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .api import (
@@ -15,8 +16,9 @@ from .api import (
     DomResCannotConnect,
     DomResVerificationRequired,
 )
-from .const import NAME, UPDATE_INTERVAL
+from .const import DOMAIN, NAME, UPDATE_INTERVAL
 from .data import account_name, normalize_meters
+from .events import DomResEventTracker
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -24,7 +26,13 @@ _LOGGER = logging.getLogger(__name__)
 class DomResCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     """Fetch DomRes read-only account data on a low-frequency schedule."""
 
-    def __init__(self, hass: HomeAssistant, api: DomResApi) -> None:
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        api: DomResApi,
+        entry_id: str,
+        deadline_days: int,
+    ) -> None:
         super().__init__(
             hass,
             _LOGGER,
@@ -32,6 +40,20 @@ class DomResCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             update_interval=UPDATE_INTERVAL,
         )
         self.api = api
+        self.entry_id = entry_id
+        self._deadline_days = deadline_days
+        self._event_store = Store(hass, 1, f"{DOMAIN}_{entry_id}_event_state")
+        self.event_tracker = DomResEventTracker(deadline_days)
+        self.reading_values: dict[str, float] = {}
+
+    async def async_load_event_state(self) -> None:
+        """Restore unpaid-event period markers before the first refresh."""
+        try:
+            stored_state = await self._event_store.async_load()
+        except OSError as err:
+            _LOGGER.warning("Could not restore DomRes event state: %s", err)
+            stored_state = None
+        self.event_tracker = DomResEventTracker(self._deadline_days, stored_state)
 
     async def _async_update_data(self) -> dict[str, Any]:
         try:
@@ -59,6 +81,7 @@ class DomResCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         "name": account_name(account),
                         "balance": raw.get("balance"),
                         "availability": raw.get("availability"),
+                        "indication_status": raw.get("indication_status"),
                         "meters": normalize_meters(raw.get("meters")),
                         "errors": raw.get("errors", {}),
                     }
@@ -68,4 +91,17 @@ class DomResCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         if accounts and not snapshots:
             raise UpdateFailed("Не удалось получить данные ни по одному лицевому счёту")
+        previous_event_state = self.event_tracker.stored_state
+        events = self.event_tracker.update(snapshots)
+        current_event_state = self.event_tracker.stored_state
+        if current_event_state != previous_event_state:
+            try:
+                await self._event_store.async_save(current_event_state)
+            except OSError as err:
+                _LOGGER.warning("Could not persist DomRes event state: %s", err)
+        for event_type, payload in events:
+            self.hass.bus.async_fire(
+                event_type,
+                {"entry_id": self.entry_id, **payload},
+            )
         return {"accounts": snapshots}

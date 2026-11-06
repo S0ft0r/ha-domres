@@ -67,6 +67,12 @@ class FakeSession:
         self.get_bodies = get_bodies or [
             {"balance": {"value": 0}, "fine": {"value": 0}},
             {"indicationAvailability": True, "days": "19", "title": "Период"},
+            {
+                "status": "NOT_DECLARED",
+                "dateDeclared": None,
+                "datePeriodFrom": "01.11.2026",
+                "datePeriodTo": "25.11.2026",
+            },
             [],
         ]
 
@@ -92,13 +98,17 @@ class ApiReadOnlyTests(unittest.TestCase):
 
         session, snapshot = asyncio.run(run())
         methods = [call[0] for call in session.calls]
-        self.assertEqual(methods, ["POST", "GET", "GET", "GET"])
+        self.assertEqual(methods, ["POST", "GET", "GET", "GET", "GET"])
         auth_call = session.calls[0]
         self.assertEqual(auth_call[2]["json"]["type"], "EMAIL")
         self.assertEqual(auth_call[2]["headers"]["Customer"], "tenant-test")
         self.assertEqual(snapshot["balance"]["balance"]["value"], 0)
         self.assertEqual(snapshot["availability"]["days"], "19")
+        self.assertEqual(snapshot["indication_status"]["datePeriodTo"], "25.11.2026")
         self.assertEqual(snapshot["account_id"], "account/1")
+        self.assertTrue(
+            any("/v1/accounts/account%2F1/indications/status" in call[1] for call in session.calls)
+        )
         self.assertTrue(all("/reading" not in call[1] for call in session.calls[1:]))
 
     def test_customer_header_is_omitted_when_unconfirmed(self) -> None:

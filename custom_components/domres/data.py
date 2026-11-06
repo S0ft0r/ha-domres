@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 
@@ -35,6 +36,17 @@ def numeric_value(value: Any) -> float | None:
         except ValueError:
             return None
     return None
+
+
+def reading_not_below_previous(value: Any, previous: Any) -> bool:
+    """Return whether a proposed reading is numeric and not below the last value."""
+    proposed = numeric_value(value)
+    if proposed is None or not math.isfinite(proposed):
+        return False
+    previous_value = numeric_value(previous)
+    return previous_value is None or (
+        math.isfinite(previous_value) and proposed >= previous_value
+    )
 
 
 def integer_days(value: Any) -> int | None:
@@ -162,6 +174,25 @@ def normalize_meters(payload: Any) -> list[dict[str, Any]]:
             }
         )
     return normalized
+
+
+def previous_reading_for_scale(
+    snapshots: list[dict[str, Any]],
+    account_id: str,
+    meter_id: str,
+    scale_id: str,
+) -> float | None:
+    """Find the latest known reading for one account, meter, and scale."""
+    for snapshot in snapshots:
+        if str(snapshot.get("account_id")) != account_id:
+            continue
+        for meter in snapshot.get("meters", []):
+            if str(meter.get("meter_id")) != meter_id:
+                continue
+            for scale in meter.get("scales", []):
+                if str(scale.get("scale_id")) == scale_id:
+                    return numeric_value(scale.get("previous_reading"))
+    return None
 
 
 def account_name(account: dict[str, Any]) -> str:

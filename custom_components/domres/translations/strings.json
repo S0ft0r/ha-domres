@@ -23,5 +23,19 @@
     "abort": {
       "already_configured": "This account is already configured."
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Reading deadline notification",
+        "description": "Choose how many days before the end of the reading period to raise domres_reading_deadline. The event is raised once per account while the period is active.",
+        "data": {
+          "deadline_days": "Days before the end of the period"
+        },
+        "data_description": {
+          "deadline_days": "Use 0 to raise the event on the last day. Allowed range: 0–31 days."
+        }
+      }
+    }
   }
 }

@@ -7,8 +7,9 @@ from typing import Any
 
 import voluptuous as vol
 from homeassistant import config_entries
+from homeassistant.config_entries import ConfigEntry, OptionsFlowWithReload
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import (
@@ -18,7 +19,15 @@ from .api import (
     DomResNoAccounts,
     DomResVerificationRequired,
 )
-from .const import CONF_CUSTOMER, DOMAIN, NAME
+from .const import (
+    CONF_CUSTOMER,
+    CONF_DEADLINE_DAYS,
+    DEFAULT_DEADLINE_DAYS,
+    DOMAIN,
+    MAX_DEADLINE_DAYS,
+    MIN_DEADLINE_DAYS,
+    NAME,
+)
 
 
 def _unique_login(login: str) -> str:
@@ -47,6 +56,12 @@ class DomResConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow using one autodetected phone/email login field."""
 
     VERSION = 1
+
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry: ConfigEntry) -> DomResOptionsFlow:
+        """Expose the configurable notice threshold for indication deadlines."""
+        return DomResOptionsFlow()
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -94,4 +109,37 @@ class DomResConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="user",
             data_schema=schema,
             errors=errors,
+        )
+
+
+class DomResOptionsFlow(OptionsFlowWithReload):
+    """Configure how many days before the deadline the event is raised."""
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.FlowResult:
+        if user_input is not None:
+            return self.async_create_entry(data=user_input)
+
+        default_days = self.config_entry.options.get(
+            CONF_DEADLINE_DAYS,
+            DEFAULT_DEADLINE_DAYS,
+        )
+        schema = vol.Schema(
+            {
+                vol.Required(
+                    CONF_DEADLINE_DAYS,
+                    default=default_days,
+                ): vol.All(
+                    vol.Coerce(int),
+                    vol.Range(min=MIN_DEADLINE_DAYS, max=MAX_DEADLINE_DAYS),
+                )
+            }
+        )
+        return self.async_show_form(
+            step_id="init",
+            data_schema=self.add_suggested_values_to_schema(
+                schema,
+                self.config_entry.options,
+            ),
         )

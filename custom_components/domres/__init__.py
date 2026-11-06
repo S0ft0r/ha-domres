@@ -9,10 +9,15 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import DomResApi
-from .const import CONF_CUSTOMER, DOMAIN
+from .const import (
+    CONF_CUSTOMER,
+    CONF_DEADLINE_DAYS,
+    DEFAULT_DEADLINE_DAYS,
+    DOMAIN,
+)
 from .coordinator import DomResCoordinator
 
-PLATFORMS: list[Platform] = [Platform.SENSOR]
+PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.NUMBER, Platform.BUTTON]
 
 
 def _remove_retired_binary_sensors(hass: HomeAssistant, entry: ConfigEntry) -> None:
@@ -31,7 +36,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         entry.data[CONF_PASSWORD],
         entry.data.get(CONF_CUSTOMER) or None,
     )
-    coordinator = DomResCoordinator(hass, api)
+    coordinator = DomResCoordinator(
+        hass,
+        api,
+        entry.entry_id,
+        int(entry.options.get(CONF_DEADLINE_DAYS, DEFAULT_DEADLINE_DAYS)),
+    )
+    await coordinator.async_load_event_state()
     # Let DataUpdateCoordinator translate UpdateFailed into ConfigEntryNotReady.
     # Do not catch Exception here: programming errors must remain visible in logs.
     await coordinator.async_config_entry_first_refresh()

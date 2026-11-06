@@ -26,6 +26,8 @@ normalize_meters = _data.normalize_meters
 numeric_value = _data.numeric_value
 integer_days = _data.integer_days
 russian_day_unit = _data.russian_day_unit
+reading_not_below_previous = _data.reading_not_below_previous
+previous_reading_for_scale = _data.previous_reading_for_scale
 
 
 class LoginTypeTests(unittest.TestCase):
@@ -70,7 +72,43 @@ class DayValueTests(unittest.TestCase):
                 self.assertEqual(russian_day_unit(value), expected)
 
 
+class ReadingValidationTests(unittest.TestCase):
+    def test_new_value_must_not_be_lower_than_previous(self) -> None:
+        self.assertTrue(reading_not_below_previous(125.4, 125.4))
+        self.assertTrue(reading_not_below_previous(125.5, 125.4))
+        self.assertFalse(reading_not_below_previous(125.39, 125.4))
+        self.assertTrue(reading_not_below_previous(0, None))
+        self.assertFalse(reading_not_below_previous("not-a-number", 10))
+        self.assertFalse(reading_not_below_previous(float("nan"), None))
+
+
+class PreviousReadingLookupTests(unittest.TestCase):
+    def test_previous_value_is_selected_for_exact_account_meter_and_scale(self) -> None:
+        snapshots = [
+            {
+                "account_id": "account-1",
+                "meters": [
+                    {
+                        "meter_id": "meter-1",
+                        "scales": [
+                            {"scale_id": "day", "previous_reading": 125.4},
+                            {"scale_id": "night", "previous_reading": 81.2},
+                        ],
+                    }
+                ],
+            }
+        ]
+        self.assertEqual(
+            previous_reading_for_scale(snapshots, "account-1", "meter-1", "night"),
+            81.2,
+        )
+        self.assertIsNone(
+            previous_reading_for_scale(snapshots, "account-1", "meter-1", "missing")
+        )
+
+
 class MeterNormalizationTests(unittest.TestCase):
+
     def test_normalizes_known_pskov_style_meter_shape(self) -> None:
         result = normalize_meters(
             [

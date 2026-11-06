@@ -4,6 +4,10 @@ from datetime import timedelta
 
 DOMAIN = "domres"
 CONF_CUSTOMER = "customer"
+CONF_DEADLINE_DAYS = "deadline_days"
+DEFAULT_DEADLINE_DAYS = 3
+MIN_DEADLINE_DAYS = 0
+MAX_DEADLINE_DAYS = 31
 NAME = "ДомРесурс"
 API_BASE_URL = "https://domres.ru/api"
 

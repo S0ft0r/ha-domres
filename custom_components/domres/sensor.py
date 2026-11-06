@@ -8,13 +8,12 @@ from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, Sen
 from homeassistant.const import UnitOfEnergy, UnitOfVolume
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN, NAME
 from .coordinator import DomResCoordinator
 from .data import integer_days, numeric_value, russian_day_unit
+from .entity import account_device_info, meter_scale_key
 
 
 def _balance_value(snapshot: dict[str, Any], key: str) -> float | None:
@@ -44,16 +43,6 @@ def _reading_units(raw_unit: Any) -> tuple[str | None, SensorDeviceClass | None,
     return unit or None, None, None
 
 
-def _device_info(entry: ConfigEntry, snapshot: dict[str, Any]) -> DeviceInfo:
-    account_id = snapshot["account_id"]
-    return DeviceInfo(
-        identifiers={(DOMAIN, f"{entry.entry_id}_{account_id}")},
-        name=f"{NAME} — {snapshot['name']}",
-        manufacturer=NAME,
-        configuration_url="https://domres.ru",
-    )
-
-
 class _DomResSensor(CoordinatorEntity[DomResCoordinator], SensorEntity):
     """Base entity for account sensors."""
 
@@ -73,7 +62,7 @@ class _DomResSensor(CoordinatorEntity[DomResCoordinator], SensorEntity):
         self._key = key
         self._attr_unique_id = f"{entry.entry_id}_{self._account_id}_{key}"
         self._attr_name = name
-        self._attr_device_info = _device_info(entry, snapshot)
+        self._attr_device_info = account_device_info(entry, snapshot)
 
     @property
     def _snapshot(self) -> dict[str, Any] | None:
@@ -162,6 +151,9 @@ class DomResDaysSensor(_DomResSensor):
 class DomResLastReadingSensor(_DomResSensor):
     """Most recent known reading for one meter scale."""
 
+    # Keep the requested compact friendly_name instead of prefixing the device name.
+    _attr_has_entity_name = False
+
     def __init__(
         self,
         coordinator: DomResCoordinator,
@@ -171,10 +163,8 @@ class DomResLastReadingSensor(_DomResSensor):
         scale: dict[str, Any],
         index: int,
     ) -> None:
-        safe_meter = meter.get("registration") or meter.get("serial") or meter.get("meter_id") or "meter"
-        safe_scale = scale.get("scale_id") or index
-        key = f"reading_{safe_meter}_{safe_scale}"
-        name = f"Последнее показание — {meter['name']} — {scale['name']}"
+        key = f"reading_{meter_scale_key(meter, scale, index)}"
+        name = "Последние показания"
         super().__init__(coordinator, entry, snapshot, key, name)
         unit, device_class, state_class = _reading_units(scale.get("unit"))
         self._attr_native_unit_of_measurement = unit
