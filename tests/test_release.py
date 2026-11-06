@@ -4,11 +4,19 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import shutil
+import subprocess
 import tempfile
 import unittest
 import zipfile
 
-from scripts.build_release import BuildError, build_delta, build_component_zip, verify_current_state
+from scripts.build_release import (
+    BuildError,
+    build_component_zip,
+    build_delta,
+    build_delta_from_git,
+    verify_current_state,
+)
 
 
 class ReleaseBuilderTests(unittest.TestCase):
@@ -63,6 +71,69 @@ class ReleaseBuilderTests(unittest.TestCase):
         self.assertEqual(archive_path.name, "domres_0.1.4_changed_files.zip")
         self.assertIn("custom_components/domres/__init__.py", changed)
         verify_current_state(self.root)
+
+    @unittest.skipUnless(shutil.which("git"), "git is required for Git-tag delta tests")
+    def test_git_tag_delta_allows_skipped_patch_versions_without_build_state(self) -> None:
+        def git(*args: str) -> None:
+            subprocess.run(
+                ["git", *args],
+                cwd=self.root,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+        git("init", "-q")
+        git("config", "user.name", "DomRes test")
+        git("config", "user.email", "domres-test@example.invalid")
+        git("add", "-A")
+        git("commit", "-m", "baseline")
+        git("tag", "v0.1.2")
+
+        manifest_path = self.root / "custom_components/domres/manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["version"] = "0.1.4"
+        manifest_path.write_text(json.dumps(manifest) + "\n", encoding="utf-8")
+        (self.root / "scripts/validate.py").write_text("# updated validator\n", encoding="utf-8")
+        (self.root / "tests/test_smoke.py").unlink()
+        (self.root / "internal/decision.md").write_text("still private\n", encoding="utf-8")
+        git("add", "-A")
+        git("commit", "-m", "skip 0.1.3 and prepare 0.1.4")
+
+        archive_path, changed, deleted = build_delta_from_git(self.root, "v0.1.2")
+        self.assertEqual(archive_path.name, "domres_0.1.4_changed_files.zip")
+        self.assertIn("custom_components/domres/manifest.json", changed)
+        self.assertIn("scripts/validate.py", changed)
+        self.assertEqual(deleted, ["tests/test_smoke.py"])
+        with zipfile.ZipFile(archive_path) as archive:
+            names = set(archive.namelist())
+            deleted_names = archive.read("DELETED_FILES.txt").decode("utf-8").splitlines()
+        self.assertNotIn("internal/decision.md", names)
+        self.assertEqual(deleted_names, ["tests/test_smoke.py"])
+        verify_current_state(self.root)
+
+        # A retry can rebuild missing state without overwriting an identical retained ZIP.
+        state_path = self.root / "release/.build_state.json"
+        state_path.unlink()
+        reused_path, _, _ = build_delta_from_git(self.root, "v0.1.2")
+        self.assertEqual(reused_path, archive_path)
+        verify_current_state(self.root)
+
+        # A stale archive for this unpublished version is atomically regenerated.
+        state_path.unlink()
+        with zipfile.ZipFile(archive_path, "w") as archive:
+            archive.writestr("stale.txt", "wrong baseline")
+        replaced_path, _, _ = build_delta_from_git(self.root, "v0.1.2")
+        self.assertEqual(replaced_path, archive_path)
+        with zipfile.ZipFile(replaced_path) as archive:
+            self.assertNotIn("stale.txt", archive.namelist())
+        verify_current_state(self.root)
+
+        # Once the version is tagged, the tag-based recovery path must not replace it.
+        state_path.unlink()
+        git("tag", "v0.1.4")
+        with self.assertRaises(BuildError):
+            build_delta_from_git(self.root, "v0.1.2")
 
     def test_next_build_bumps_patch_and_keeps_previous_archive(self) -> None:
         first_archive, _, _ = build_delta(self.root)

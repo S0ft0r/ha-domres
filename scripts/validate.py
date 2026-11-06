@@ -359,9 +359,17 @@ def validate(
         if re.search(r"(?m)^\s*sleep\s+120\s*$", release_text):
             errors.append("Release workflow must not use a fixed two-minute delay")
         bootstrap_position = release_text.find("--bootstrap-current-version")
+        git_delta_position = release_text.find("--from-git-tag")
         strict_position = release_text.find("--strict-release --strict-publication")
-        if bootstrap_position < 0 or strict_position < bootstrap_position:
-            errors.append("Release workflow must create/verify the delta archive before strict release validation")
+        if (
+            bootstrap_position < 0
+            or git_delta_position < 0
+            or strict_position < bootstrap_position
+            or strict_position < git_delta_position
+        ):
+            errors.append("Release workflow must build a baseline or tag-based delta before strict release validation")
+        if "refusing to publish a full snapshot as a delta" in release_text:
+            errors.append("Release workflow must allow a delta from the latest tag when build state is absent")
 
     release_dir = ROOT / "release"
     for archive_path in sorted(release_dir.glob("*.zip")) if release_dir.is_dir() else []:

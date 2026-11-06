@@ -79,12 +79,18 @@ jobs:
           VERSION: ${{ steps.release_gate.outputs.version }}
         run: |
           if [ -f release/.build_state.json ]; then
-            python scripts/build_release.py --check
-          elif [ -n "$(git tag --list 'v0.1.*')" ]; then
-            echo "Release tags exist but release build state is missing; refusing to publish a full snapshot as a delta." >&2
-            exit 1
+            if python scripts/build_release.py --check; then
+              :
+            else
+              python scripts/build_release.py
+            fi
           else
-            python scripts/build_release.py --bootstrap-current-version
+            BASE_TAG="$(git tag --list 'v0.1.*' | grep -E '^v0\.1\.[0-9]+$' | sort -V | tail -n 1 || true)"
+            if [ -n "$BASE_TAG" ]; then
+              python scripts/build_release.py --from-git-tag "$BASE_TAG"
+            else
+              python scripts/build_release.py --bootstrap-current-version
+            fi
           fi
           test -f "release/domres_${VERSION}_changed_files.zip"
           python scripts/validate.py --strict-release --strict-publication

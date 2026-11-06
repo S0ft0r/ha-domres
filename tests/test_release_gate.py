@@ -8,6 +8,10 @@ from scripts.release_gate import should_release
 
 
 class ReleaseGateTests(unittest.TestCase):
+    def test_allows_a_newer_version_even_when_an_intermediate_patch_is_skipped(self) -> None:
+        allowed, _ = should_release("0.1.4", ["v0.1.2"])
+        self.assertTrue(allowed)
+
     def test_allows_only_a_newer_version(self) -> None:
         allowed, _ = should_release("0.1.2", ["v0.1.0", "v0.1.1"])
         self.assertTrue(allowed)

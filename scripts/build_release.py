@@ -10,6 +10,7 @@ import json
 import os
 from pathlib import Path, PurePosixPath
 import re
+import subprocess
 import sys
 import zipfile
 from typing import Any
@@ -168,6 +169,181 @@ def _save_state(root: Path, state: dict[str, Any]) -> None:
         encoding="utf-8",
     )
     os.replace(temporary, path)
+
+
+def _is_public_relative(name: str) -> bool:
+    """Check a repository-relative path against the public release allowlist."""
+    relative = Path(name)
+    if relative.is_absolute() or ".." in relative.parts or _is_excluded(relative):
+        return False
+    normalized = PurePosixPath(name).as_posix()
+    return normalized in PUBLIC_ROOT_FILES or any(
+        normalized.startswith(f"{directory}/") for directory in PUBLIC_DIRS
+    )
+
+
+def _git_changed_paths(root: Path, base_tag: str, diff_filter: str) -> set[str]:
+    try:
+        result = subprocess.run(
+            [
+                "git",
+                "diff",
+                "--name-only",
+                "--no-renames",
+                "-z",
+                f"--diff-filter={diff_filter}",
+                f"{base_tag}..HEAD",
+            ],
+            cwd=root,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except (OSError, subprocess.CalledProcessError) as err:
+        raise BuildError(f"Cannot calculate changes from release tag {base_tag}: {err}") from err
+    return {name for name in result.stdout.split("\0") if name}
+
+
+def _archive_matches_delta(
+    root: Path,
+    archive_path: Path,
+    changed_files: list[str],
+    deleted_files: list[str],
+) -> bool:
+    expected_names = set(changed_files)
+    if deleted_files:
+        expected_names.add("DELETED_FILES.txt")
+    try:
+        with zipfile.ZipFile(archive_path) as archive:
+            names = archive.namelist()
+            if len(names) != len(set(names)) or set(names) != expected_names:
+                return False
+            if archive.testzip() is not None:
+                return False
+            for relative in changed_files:
+                if archive.read(relative) != (root / relative).read_bytes():
+                    return False
+            if deleted_files:
+                expected_deleted = ("\n".join(deleted_files) + "\n").encode("utf-8")
+                if archive.read("DELETED_FILES.txt") != expected_deleted:
+                    return False
+    except (OSError, KeyError, zipfile.BadZipFile):
+        return False
+    return True
+
+
+def _write_delta_archive(
+    root: Path,
+    current_version: str,
+    changed_files: list[str],
+    deleted_files: list[str],
+    previous_archives: list[str],
+    *,
+    reuse_matching_archive: bool = False,
+    replace_mismatched_archive: bool = False,
+) -> tuple[Path, list[str], list[str]]:
+    if not changed_files and not deleted_files:
+        raise BuildError("No changed files to archive")
+
+    archive_name = f"domres_{current_version}_changed_files.zip"
+    archive_path = root / "release" / archive_name
+    write_archive = True
+    if archive_path.exists():
+        matches_delta = reuse_matching_archive and _archive_matches_delta(
+            root,
+            archive_path,
+            changed_files,
+            deleted_files,
+        )
+        if matches_delta:
+            write_archive = False
+        elif not replace_mismatched_archive:
+            raise BuildError(f"Archive already exists and will not be overwritten: {archive_path}")
+    if write_archive:
+        temporary_archive = archive_path.with_suffix(".zip.tmp")
+        with zipfile.ZipFile(
+            temporary_archive,
+            mode="w",
+            compression=zipfile.ZIP_DEFLATED,
+            compresslevel=9,
+        ) as archive:
+            for relative in changed_files:
+                archive.write(root / relative, arcname=relative)
+            if deleted_files:
+                archive.writestr("DELETED_FILES.txt", "\n".join(deleted_files) + "\n")
+        os.replace(temporary_archive, archive_path)
+
+    archives = [*previous_archives, archive_name]
+    new_state = {
+        "schema": 1,
+        "last_version": current_version,
+        "files": file_hashes(root),
+        "semantic_files": file_hashes(root, semantic=True),
+        "archives": archives,
+        "built_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
+    }
+    _save_state(root, new_state)
+    return archive_path, changed_files, deleted_files
+
+
+def _git_tag_exists(root: Path, tag: str) -> bool:
+    try:
+        result = subprocess.run(
+            ["git", "tag", "--list", tag],
+            cwd=root,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except (OSError, subprocess.CalledProcessError) as err:
+        raise BuildError(f"Cannot inspect repository release tags: {err}") from err
+    return tag in result.stdout.splitlines()
+
+
+def build_delta_from_git(root: Path, base_tag: str) -> tuple[Path, list[str], list[str]]:
+    """Build a true delta from the latest published tag when build state is absent."""
+    root = root.resolve()
+    tag_match = re.fullmatch(r"v0\.1\.(\d+)", base_tag)
+    if not tag_match:
+        raise BuildError(f"Base release tag must match v0.1.N; got {base_tag!r}")
+    base_version_number = int(tag_match.group(1))
+    if _load_state(root) is not None:
+        raise BuildError("Git-tag delta mode is only for checkouts without a build state")
+
+    current_version = str(_read_manifest(root).get("version", ""))
+    current_version_number = _version_number(current_version)
+    if base_version_number >= current_version_number:
+        raise BuildError(f"Base tag {base_tag} must be older than version {current_version}")
+    if _git_tag_exists(root, f"v{current_version}"):
+        raise BuildError(f"Version {current_version} is already tagged; refusing to rebuild its release archive")
+    current_files = {
+        path.relative_to(root).as_posix()
+        for path in public_files(root)
+    }
+    changed_paths = _git_changed_paths(root, base_tag, "ACMRT")
+    deleted_paths = _git_changed_paths(root, base_tag, "D")
+    changed_files = sorted(
+        name for name in changed_paths if name in current_files and _is_public_relative(name)
+    )
+    deleted_files = sorted(
+        name
+        for name in deleted_paths
+        if name not in current_files and _is_public_relative(name)
+    )
+    if not changed_files and not deleted_files:
+        raise BuildError(f"No public source changes since {base_tag}")
+
+    release_dir = root / "release"
+    release_dir.mkdir(parents=True, exist_ok=True)
+    return _write_delta_archive(
+        root,
+        current_version,
+        changed_files,
+        deleted_files,
+        previous_archives=[],
+        reuse_matching_archive=True,
+        replace_mismatched_archive=True,
+    )
 
 
 def build_delta(
@@ -338,6 +514,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="allow the first archive to use the current 0.1.N version (CI bootstrap only)",
     )
+    parser.add_argument(
+        "--from-git-tag",
+        metavar="TAG",
+        help="build a release delta from a previous v0.1.N tag when build state is absent",
+    )
     args = parser.parse_args(argv)
     try:
         if args.check:
@@ -347,10 +528,13 @@ def main(argv: list[str] | None = None) -> int:
             output = build_component_zip(ROOT, args.component_zip)
             print(f"Created integration ZIP: {output}")
         else:
-            path, changed, deleted = build_delta(
-                ROOT,
-                bootstrap_current_version=args.bootstrap_current_version,
-            )
+            if args.from_git_tag:
+                path, changed, deleted = build_delta_from_git(ROOT, args.from_git_tag)
+            else:
+                path, changed, deleted = build_delta(
+                    ROOT,
+                    bootstrap_current_version=args.bootstrap_current_version,
+                )
             print(f"Created {path.relative_to(ROOT)}")
             print(f"Changed files ({len(changed)}):")
             for name in changed:
