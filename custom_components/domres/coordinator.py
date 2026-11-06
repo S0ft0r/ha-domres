@@ -8,7 +8,13 @@ from typing import Any
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .api import DomResApi, DomResApiError
+from .api import (
+    DomResApi,
+    DomResApiError,
+    DomResAuthenticationError,
+    DomResCannotConnect,
+    DomResVerificationRequired,
+)
 from .const import NAME, UPDATE_INTERVAL
 from .data import account_name, normalize_meters
 
@@ -34,6 +40,12 @@ class DomResCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             for account in accounts:
                 try:
                     raw = await self.api.async_get_account_snapshot(account)
+                except (
+                    DomResAuthenticationError,
+                    DomResVerificationRequired,
+                    DomResCannotConnect,
+                ):
+                    raise
                 except DomResApiError as err:
                     _LOGGER.debug("Skipping one DomRes account after API error: %s", err)
                     continue

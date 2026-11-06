@@ -13,4 +13,3 @@ CUSTOMER_HEADER_NAME = "Customer"
 USER_AGENT = "HomeAssistant-DomRes"
 
 UPDATE_INTERVAL = timedelta(hours=6)
-PLATFORMS = ("sensor", "binary_sensor")

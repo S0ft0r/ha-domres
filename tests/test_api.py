@@ -39,9 +39,11 @@ _fake_aiohttp = types.ModuleType("aiohttp")
 _fake_aiohttp.ClientError = type("ClientError", (Exception,), {})
 _fake_aiohttp.ClientTimeout = lambda **kwargs: kwargs
 _fake_aiohttp.ClientSession = type("ClientSession", (), {})
-sys.modules.setdefault("aiohttp", _fake_aiohttp)
+_aiohttp_module = sys.modules.setdefault("aiohttp", _fake_aiohttp)
 _api_module = _load_module("api")
 DomResApi = _api_module.DomResApi
+DomResApiError = _api_module.DomResApiError
+DomResCannotConnect = _api_module.DomResCannotConnect
 
 
 class FakeResponse:
@@ -60,9 +62,9 @@ class FakeResponse:
 
 
 class FakeSession:
-    def __init__(self) -> None:
+    def __init__(self, get_bodies: list[object] | None = None) -> None:
         self.calls: list[tuple[str, str, dict]] = []
-        self.get_bodies = [
+        self.get_bodies = get_bodies or [
             {"balance": {"value": 0}, "fine": {"value": 0}},
             {"indicationAvailability": True, "days": "19", "title": "Период"},
             [],
@@ -111,6 +113,69 @@ class ApiReadOnlyTests(unittest.TestCase):
         self.assertEqual(method, "POST")
         self.assertEqual(kwargs["json"]["type"], "PHONE")
         self.assertNotIn("Customer", kwargs["headers"])
+
+    def test_account_validation_calls_real_api_methods(self) -> None:
+        async def run() -> tuple[FakeSession, list[dict]]:
+            session = FakeSession(get_bodies=[[{"id": "account-42"}]])
+            api = DomResApi(session, "user@example.org", "not-a-real-password")
+            await api.async_login()
+            accounts = await api.async_get_accounts()
+            return session, accounts
+
+        session, accounts = asyncio.run(run())
+        self.assertEqual(accounts, [{"id": "account-42"}])
+        self.assertEqual([call[0] for call in session.calls], ["POST", "GET"])
+
+    def test_empty_primary_account_list_is_preserved(self) -> None:
+        async def run() -> list[dict]:
+            session = FakeSession(get_bodies=[{"accounts": [], "data": [{"id": "fallback"}]}])
+            api = DomResApi(session, "user@example.org", "not-a-real-password")
+            await api.async_login()
+            return await api.async_get_accounts()
+
+        self.assertEqual(asyncio.run(run()), [])
+
+    def test_falsey_account_id_is_preserved(self) -> None:
+        async def run() -> tuple[FakeSession, dict]:
+            session = FakeSession()
+            api = DomResApi(session, "user@example.org", "not-a-real-password")
+            await api.async_login()
+            snapshot = await api.async_get_account_snapshot(
+                {"id": 0, "accountId": "should-not-replace-zero"}
+            )
+            return session, snapshot
+
+        session, snapshot = asyncio.run(run())
+        self.assertEqual(snapshot["account_id"], "0")
+        self.assertTrue(any("/accounts/0/" in call[1] for call in session.calls))
+
+    def test_all_failed_read_endpoints_raise_instead_of_reporting_success(self) -> None:
+        class FailedReadSession(FakeSession):
+            def request(self, method: str, url: str, **kwargs):
+                self.calls.append((method, url, kwargs))
+                return FakeResponse(503, {"message": "unavailable"})
+
+        async def run() -> None:
+            api = DomResApi(FailedReadSession(), "user@example.org", "not-a-real-password")
+            await api.async_login()
+            await api.async_get_account_snapshot({"id": "account-1"})
+
+        with self.assertRaises(DomResApiError):
+            asyncio.run(run())
+
+    def test_network_failure_propagates_for_coordinator_retry(self) -> None:
+        class OfflineSession(FakeSession):
+            def request(self, method: str, url: str, **kwargs):
+                self.calls.append((method, url, kwargs))
+                raise _aiohttp_module.ClientError("offline")
+
+        async def run() -> None:
+            api = DomResApi(OfflineSession(), "user@example.org", "not-a-real-password")
+            await api.async_login()
+            await api.async_get_account_snapshot({"id": "account-1"})
+
+        with self.assertRaises(DomResCannotConnect):
+            asyncio.run(run())
 
 
 if __name__ == "__main__":

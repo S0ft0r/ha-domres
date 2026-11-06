@@ -54,4 +54,4 @@ python scripts/build_release.py
 python scripts/build_release.py --component-zip domres.zip
 ```
 
-GitHub Actions запускает локальные проверки и Hassfest. HACS validation автоматически включится после добавления выбранного файла лицензии; публикация GitHub-релиза выполняется по тегу `v0.1.N`.
+GitHub Actions запускает локальные проверки и Hassfest. HACS validation автоматически включится после добавления файла лицензии. Публикация выполняется только после успешной проверки на `main`; workflow не реагирует на ручной запуск или push тега и не выпускает уже опубликованную версию. Пока не заданы лицензия, `codeowners` и `issue_tracker`, публикация намеренно заблокирована.

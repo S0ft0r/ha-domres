@@ -47,10 +47,11 @@ def _decode_response(text: str) -> Any:
 
 
 def _account_id(account: dict[str, Any]) -> str | None:
-    value = account.get("id") or account.get("accountId") or account.get("account_id")
-    if value is None:
-        return None
-    return str(value)
+    for key in ("id", "accountId", "account_id"):
+        value = account.get(key)
+        if value is not None:
+            return str(value)
+    return None
 
 
 class DomResApi:
@@ -166,7 +167,10 @@ class DomResApi:
         """Return the authenticated user's account list."""
         result = await self._async_request("GET", "/v8/accounts/light")
         if isinstance(result, dict):
-            result = result.get("accounts") or result.get("data") or result.get("items")
+            for key in ("accounts", "data", "items"):
+                if key in result and result[key] is not None:
+                    result = result[key]
+                    break
         if not isinstance(result, list):
             raise DomResApiError("Не удалось прочитать список лицевых счетов")
         return [item for item in result if isinstance(item, dict)]
@@ -189,9 +193,15 @@ class DomResApi:
         for key, (method, path) in endpoints.items():
             try:
                 result[key] = await self._async_request(method, path)
-            except (DomResAuthenticationError, DomResVerificationRequired):
+            except (
+                DomResAuthenticationError,
+                DomResVerificationRequired,
+                DomResCannotConnect,
+            ):
                 raise
             except DomResApiError as err:
                 result[key] = None
                 result["errors"][key] = str(err)
+        if all(result[key] is None for key in endpoints):
+            raise DomResApiError("Не удалось получить ни один набор данных лицевого счёта")
         return result

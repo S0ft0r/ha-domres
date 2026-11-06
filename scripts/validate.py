@@ -12,7 +12,10 @@ import struct
 import sys
 import zipfile
 
-from build_release import BuildError, _is_excluded, verify_current_state
+try:
+    from .build_release import BuildError, _is_excluded, verify_current_state
+except ImportError:
+    from build_release import BuildError, _is_excluded, verify_current_state
 
 ROOT = Path(__file__).resolve().parents[1]
 COMPONENT = ROOT / "custom_components/domres"
@@ -34,6 +37,21 @@ BRAND_SIZES = {
     "icon@2x.png": (512, 512),
     "dark_icon.png": (256, 256),
     "dark_icon@2x.png": (512, 512),
+}
+HA_PROVIDED_MODULES = {"aiohttp", "homeassistant", "voluptuous"}
+BLOCKING_FILE_METHODS = {
+    "exists",
+    "is_file",
+    "is_dir",
+    "iterdir",
+    "glob",
+    "rglob",
+    "read_bytes",
+    "read_text",
+    "write_bytes",
+    "write_text",
+    "stat",
+    "open",
 }
 
 
@@ -65,9 +83,39 @@ def _png_dimensions(path: Path) -> tuple[int, int] | None:
     return int(width), int(height)
 
 
-def validate(strict_release: bool = False) -> tuple[list[str], list[str]]:
+def _requirement_name(requirement: str) -> str:
+    match = re.match(r"\s*([A-Za-z0-9_.-]+)", requirement)
+    return match.group(1).replace("-", "_").casefold() if match else ""
+
+
+def _publication_metadata_errors(
+    manifest: dict[str, object], version: str
+) -> list[str]:
+    missing: list[str] = []
+    if not (ROOT / "LICENSE").is_file() and not (ROOT / "LICENSE.txt").is_file():
+        missing.append("LICENSE")
+    codeowners = manifest.get("codeowners")
+    if not isinstance(codeowners, list) or not codeowners:
+        missing.append("manifest codeowners")
+    elif any(not isinstance(owner, str) or not owner.startswith("@") for owner in codeowners):
+        missing.append("valid @handle in manifest codeowners")
+    issue_tracker = manifest.get("issue_tracker")
+    if not isinstance(issue_tracker, str) or not issue_tracker.startswith("https://"):
+        missing.append("manifest issue_tracker URL")
+    changelog = ROOT / "CHANGELOG.md"
+    if not changelog.is_file() or version not in changelog.read_text(encoding="utf-8"):
+        missing.append(f"CHANGELOG entry for {version}")
+    return missing
+
+
+def validate(
+    strict_release: bool = False,
+    strict_publication: bool = False,
+) -> tuple[list[str], list[str]]:
     errors: list[str] = []
     warnings: list[str] = []
+    parsed_trees: dict[Path, ast.Module] = {}
+    requirement_names: set[str] = set()
 
     required_files = (
         COMPONENT / "__init__.py",
@@ -87,7 +135,10 @@ def validate(strict_release: bool = False) -> tuple[list[str], list[str]]:
         ROOT / "hacs.json",
         ROOT / "scripts/build_release.py",
         ROOT / "scripts/validate.py",
+        ROOT / "scripts/release_gate.py",
         ROOT / "tests/test_api.py",
+        ROOT / "tests/test_release_gate.py",
+        ROOT / "tests/test_static_validation.py",
         ROOT / ".github/workflows/validate.yml",
         ROOT / ".github/workflows/release.yml",
     )
@@ -112,14 +163,31 @@ def validate(strict_release: bool = False) -> tuple[list[str], list[str]]:
             errors.append("manifest.json version must match 0.1.N")
         if not isinstance(manifest.get("codeowners"), list):
             errors.append("manifest.json codeowners must be a list")
-        elif not manifest["codeowners"]:
-            warnings.append("manifest.json codeowners is empty; add the chosen GitHub owner before publication")
         if not str(manifest.get("documentation", "")).startswith("https://"):
             errors.append("manifest.json must contain an HTTPS documentation URL")
         keys = list(manifest)
-        expected_keys = ["domain", "name"] + sorted(key for key in keys if key not in {"domain", "name"})
+        expected_keys = ["domain", "name"] + sorted(
+            key for key in keys if key not in {"domain", "name"}
+        )
         if keys != expected_keys:
             errors.append("manifest.json keys must be ordered as domain, name, then alphabetically")
+
+        requirements = manifest.get("requirements", [])
+        if not isinstance(requirements, list) or any(not isinstance(req, str) for req in requirements):
+            errors.append("manifest.json requirements must be a list of strings")
+            requirements = []
+        requirement_names = {_requirement_name(req) for req in requirements}
+        for requirement in requirements:
+            if not re.search(r"(?:>=|==|~=|<=|!=|>|<)\s*\d", requirement):
+                errors.append(f"External dependency must have a version constraint: {requirement}")
+
+        missing_publication_metadata = _publication_metadata_errors(manifest, version)
+        if missing_publication_metadata:
+            message = "Publication metadata is incomplete: " + ", ".join(missing_publication_metadata)
+            if strict_publication:
+                errors.append(message)
+            else:
+                warnings.append(message)
 
     hacs = _load_json(ROOT / "hacs.json", errors)
     if isinstance(hacs, dict):
@@ -130,9 +198,6 @@ def validate(strict_release: bool = False) -> tuple[list[str], list[str]]:
         unknown_keys = set(hacs) - ALLOWED_HACS_KEYS
         if unknown_keys:
             errors.append(f"hacs.json contains unsupported keys: {sorted(unknown_keys)}")
-
-    if not (ROOT / "LICENSE").is_file() and not (ROOT / "LICENSE.txt").is_file():
-        warnings.append("No LICENSE file: choose a license before publishing to HACS/GitHub")
 
     brand_dir = COMPONENT / "brand"
     if not brand_dir.is_dir():
@@ -178,9 +243,81 @@ def validate(strict_release: bool = False) -> tuple[list[str], list[str]]:
         errors.append("No Python files found in the integration")
     for path in python_files:
         try:
-            ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            parsed_trees[path] = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         except (OSError, SyntaxError) as err:
             errors.append(f"Python syntax error in {path.relative_to(ROOT)}: {err}")
+
+    # Prevent regressions to blocking event-loop I/O/imports like those flagged
+    # in earlier HACS reviews. Keep file work in scripts or executor jobs.
+    for path, tree in parsed_trees.items():
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ExceptHandler):
+                caught = (
+                    {child.id for child in ast.walk(node.type) if isinstance(child, ast.Name)}
+                    if node.type is not None
+                    else {"BaseException"}
+                )
+                if caught & {"Exception", "BaseException"}:
+                    errors.append(f"Broad exception handler in integration: {path.relative_to(ROOT)}")
+            if not isinstance(node, ast.Call):
+                continue
+            if isinstance(node.func, ast.Name) and node.func.id == "open":
+                errors.append(f"Synchronous file I/O in integration: {path.relative_to(ROOT)}")
+            if isinstance(node.func, ast.Attribute):
+                if node.func.attr in BLOCKING_FILE_METHODS:
+                    errors.append(
+                        f"Synchronous filesystem call {node.func.attr}() in integration: "
+                        f"{path.relative_to(ROOT)}"
+                    )
+                if node.func.attr == "import_module":
+                    errors.append(f"Dynamic import in integration runtime: {path.relative_to(ROOT)}")
+
+        # Every non-standard-library runtime import must be provided by Home Assistant
+        # or be declared as a version-constrained manifest requirement.
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                imported = [alias.name.split(".", 1)[0] for alias in node.names]
+            elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+                imported = [node.module.split(".", 1)[0]]
+            else:
+                continue
+            for module_name in imported:
+                normalized = module_name.replace("-", "_").casefold()
+                if (
+                    normalized not in sys.stdlib_module_names
+                    and normalized not in HA_PROVIDED_MODULES
+                    and normalized not in requirement_names
+                ):
+                    errors.append(
+                        f"Undeclared runtime dependency '{module_name}' imported by "
+                        f"{path.relative_to(ROOT)}; add a version-constrained manifest requirement"
+                    )
+
+    # Guard against config-flow/client method-name mismatches (a known earlier bug).
+    api_tree = parsed_trees.get(COMPONENT / "api.py")
+    flow_tree = parsed_trees.get(COMPONENT / "config_flow.py")
+    api_methods: set[str] = set()
+    if api_tree:
+        for node in ast.walk(api_tree):
+            if isinstance(node, ast.ClassDef) and node.name == "DomResApi":
+                api_methods = {
+                    item.name
+                    for item in node.body
+                    if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef))
+                }
+                break
+    if flow_tree:
+        for node in ast.walk(flow_tree):
+            if isinstance(node, ast.AsyncFunctionDef) and node.name == "_async_validate_credentials":
+                for child in ast.walk(node):
+                    if (
+                        isinstance(child, ast.Call)
+                        and isinstance(child.func, ast.Attribute)
+                        and isinstance(child.func.value, ast.Name)
+                        and child.func.value.id == "api"
+                        and child.func.attr not in api_methods
+                    ):
+                        errors.append(f"Config flow calls missing DomResApi method {child.func.attr}()")
 
     api_path = COMPONENT / "api.py"
     if api_path.is_file():
@@ -211,6 +348,14 @@ def validate(strict_release: bool = False) -> tuple[list[str], list[str]]:
         if "home-assistant/actions/hassfest@" not in workflow_text:
             errors.append("Validation workflow must include Hassfest")
 
+    release_workflow = ROOT / ".github/workflows/release.yml"
+    if release_workflow.is_file():
+        release_text = release_workflow.read_text(encoding="utf-8")
+        if "tags:" in release_text or "workflow_dispatch:" in release_text:
+            errors.append("Release workflow must not publish from tags or manual dispatch")
+        if "branches:" not in release_text or "needs:" not in release_text:
+            errors.append("Release workflow must gate publication on validated main-branch jobs")
+
     release_dir = ROOT / "release"
     for archive_path in sorted(release_dir.glob("*.zip")) if release_dir.is_dir() else []:
         try:
@@ -218,8 +363,7 @@ def validate(strict_release: bool = False) -> tuple[list[str], list[str]]:
                 bad_names = [
                     name
                     for name in archive.namelist()
-                    if _is_excluded(Path(name))
-                    or name.casefold().endswith((".env", ".netrc"))
+                    if _is_excluded(Path(name)) or name.casefold().endswith((".env", ".netrc"))
                 ]
                 if bad_names:
                     errors.append(
@@ -253,8 +397,16 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="fail unless source files match build state and all archives are retained",
     )
+    parser.add_argument(
+        "--strict-publication",
+        action="store_true",
+        help="fail unless LICENSE, codeowners, issue tracker, and current changelog are set",
+    )
     args = parser.parse_args(argv)
-    errors, warnings = validate(strict_release=args.strict_release)
+    errors, warnings = validate(
+        strict_release=args.strict_release,
+        strict_publication=args.strict_publication,
+    )
     for warning in warnings:
         print(f"WARNING: {warning}")
     for error in errors:
