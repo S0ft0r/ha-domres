@@ -1,0 +1,80 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v0.1.*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Validate and publish DomRes release
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Run tests and strict validation
+        run: |
+          python -m unittest discover -s tests -v
+          python scripts/validate.py --strict-release
+
+      - name: Ensure tag matches integration version
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          version = json.loads(Path("custom_components/domres/manifest.json").read_text(encoding="utf-8"))["version"]
+          tag = os.environ["TAG"]
+          if tag != f"v{version}":
+              raise SystemExit(f"Tag {tag!r} does not match manifest version {version!r}")
+          PY
+
+      - name: Build installable integration ZIP
+        run: python scripts/build_release.py --component-zip domres.zip
+
+      - name: Extract release notes
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          import re
+
+          version = os.environ["VERSION"].removeprefix("v")
+          changelog = Path("CHANGELOG.md").read_text(encoding="utf-8")
+          pattern = rf"(?ms)^## \[{re.escape(version)}\][^\n]*\n.*?(?=^## \[|\Z)"
+          match = re.search(pattern, changelog)
+          notes = match.group(0).strip() if match else "Автоматическая сборка read-only интеграции ДомРесурс."
+          Path("release_notes.md").write_text(notes + "\n", encoding="utf-8")
+          PY
+
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ github.ref_name }}
+        run: |
+          VERSION="${VERSION#v}"
+          DELTA="release/domres_${VERSION}_changed_files.zip"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$DELTA" domres.zip --clobber
+            gh release edit "$TAG" --title "ДомРесурс $TAG" --notes-file release_notes.md
+          else
+            gh release create "$TAG" "$DELTA" domres.zip \
+              --target "$GITHUB_SHA" \
+              --title "ДомРесурс $TAG" \
+              --notes-file release_notes.md
+          fi
