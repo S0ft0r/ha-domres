@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import unittest
 from pathlib import Path
 
@@ -54,11 +55,14 @@ class StaticValidationTests(unittest.TestCase):
         self.assertIn("async_update_reload_and_abort", flow_source)
         self.assertIn("_abort_if_unique_id_mismatch(reason=\"wrong_account\")", flow_source)
         for language in ("ru", "en", "strings"):
-            translation = (component / "translations" / f"{language}.json").read_text(
-                encoding="utf-8"
+            translation = json.loads(
+                (component / "translations" / f"{language}.json").read_text(
+                    encoding="utf-8"
+                )
             )
-            self.assertIn('"reconfigure"', translation)
-            self.assertIn('"wrong_account"', translation)
+            self.assertIn("reconfigure", translation["config"]["step"])
+            self.assertIn("wrong_account", translation["config"]["abort"])
+            self.assertNotIn("initiate_flow", translation["config"])
 
     def test_balance_labels_and_requested_icons(self) -> None:
         component = Path(__file__).resolve().parents[1] / "custom_components/domres"

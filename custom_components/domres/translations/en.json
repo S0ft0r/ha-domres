@@ -37,9 +37,6 @@
     "abort": {
       "already_configured": "This account is already configured.",
       "wrong_account": "This entry cannot be switched to a different DomRes account. Remove it and add the other account instead."
-    },
-    "initiate_flow": {
-      "reconfigure": "Reconfigure"
     }
   },
   "options": {
