@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import struct
 import unittest
 from pathlib import Path
 
@@ -78,6 +79,19 @@ class StaticValidationTests(unittest.TestCase):
         self.assertIn('"debt", "К оплате"', debt_source)
         self.assertIn('_attr_icon = "mdi:cash-minus"', fine_source)
         self.assertIn('_attr_icon = "mdi:invoice-text-send-outline"', button_source)
+
+    def test_brand_icons_use_home_assistant_png_sizes(self) -> None:
+        component = Path(__file__).resolve().parents[1] / "custom_components/domres"
+        dimensions = {
+            "icon.png": (256, 256),
+            "dark_icon.png": (256, 256),
+            "icon@2x.png": (512, 512),
+            "dark_icon@2x.png": (512, 512),
+        }
+        for filename, expected_size in dimensions.items():
+            image = (component / "brand" / filename).read_bytes()
+            self.assertEqual(image[:8], b"\x89PNG\r\n\x1a\n")
+            self.assertEqual(struct.unpack(">II", image[16:24]), expected_size)
 
     def test_reading_input_button_is_visible_but_never_sends_network_requests(self) -> None:
         component = Path(__file__).resolve().parents[1] / "custom_components/domres"
