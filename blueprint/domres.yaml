@@ -1,1 +1,169 @@
-blueprint
+blueprint:
+  name: ДомРесурс — уведомления и автозаполнение показаний
+  description: >-
+    Отправляет уведомления для событий domres_reading_deadline и domres_unpaid_bill.
+    При событии о сроке берёт целое значение из выбранного внешнего сенсора и
+    заполняет поле ДомРесурса. Кнопка вызывается только если выбранная кнопка
+    сообщает submission_enabled: true. Сейчас отправка интеграцией отключена,
+    поэтому blueprint лишь подготовит значение и уведомит, что оно не отправлено.
+  domain: automation
+  source_url: https://github.com/S0ft0r/ha-domres/blob/main/blueprint/domres.yaml
+  input:
+    notify_service:
+      name: Сервис уведомлений
+      description: Например, notify.mobile_app_telefon. Одинаковый сервис используется для обоих событий.
+      selector:
+        entity:
+          filter:
+            - domain:
+                - notify
+          reorder: false
+          multiple: true
+    current_reading_sensor:
+      name: Внешний сенсор текущих показаний
+      description: Выберите сенсор, из состояния которого будет взято целое значение при событии срока подачи.
+      selector:
+        entity:
+          domain: sensor
+    domres_number:
+      name: Числовое поле ДомРесурса
+      description: Выберите поле «Показание» нужного счётчика и шкалы.
+      selector:
+        entity:
+          domain: number
+    domres_button:
+      name: Кнопка ДомРесурса
+      description: Выберите кнопку «Отправить» для того же счётчика и шкалы.
+      selector:
+        entity:
+          domain: button
+
+variables:
+  notify_service: !input notify_service
+  current_reading_sensor: !input current_reading_sensor
+  domres_number: !input domres_number
+  domres_button: !input domres_button
+
+trigger:
+  - platform: event
+    event_type: domres_reading_deadline
+    id: reading_deadline
+  - platform: event
+    event_type: domres_unpaid_bill
+    id: unpaid_bill
+
+condition:
+  - condition: template
+    value_template: >-
+      {% set event_account = trigger.event.data.get('account_id') %}
+      {% set number_account = state_attr(domres_number, 'account_id') %}
+      {{ event_account is not none and number_account is not none
+         and (event_account | string) == (number_account | string) }}
+
+action:
+  - choose:
+      - conditions:
+          - condition: trigger
+            id: unpaid_bill
+        sequence:
+          - service: !input notify_service
+            data:
+              title: ДомРесурс — задолженность
+              message: >-
+                {{ trigger.event.data.get('account_name') or trigger.event.data.get('account_id', 'Лицевой счёт') }}:
+                к оплате {{ trigger.event.data.get('balance', '—') }} ₽,
+                пени {{ trigger.event.data.get('fine', '—') }} ₽.
+                Период: {{ trigger.event.data.get('period_from', '—') }} —
+                {{ trigger.event.data.get('period_to', '—') }}.
+
+      - conditions:
+          - condition: trigger
+            id: reading_deadline
+        sequence:
+          # The integration fires this event during its refresh; briefly wait for entity states to settle.
+          - delay: "00:00:01"
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: >-
+                      {% set reading_state = states(current_reading_sensor) %}
+                      {% set minimum = state_attr(domres_number, 'minimum_allowed') %}
+                      {% set number_account = state_attr(domres_number, 'account_id') %}
+                      {% set button_account = state_attr(domres_button, 'account_id') %}
+                      {% set number_meter = state_attr(domres_number, 'meter_id') %}
+                      {% set button_meter = state_attr(domres_button, 'meter_id') %}
+                      {% set number_scale = state_attr(domres_number, 'scale_id') %}
+                      {% set button_scale = state_attr(domres_button, 'scale_id') %}
+                      {{ is_number(reading_state)
+                         and (reading_state | float(0)) >= 0
+                         and minimum is not none
+                         and (reading_state | int(0)) >= (minimum | int(0))
+                         and number_account is not none and button_account is not none
+                         and (number_account | string) == (button_account | string)
+                         and number_meter is not none and button_meter is not none
+                         and (number_meter | string) == (button_meter | string)
+                         and number_scale is not none and button_scale is not none
+                         and (number_scale | string) == (button_scale | string)
+                         and states(domres_number) not in ['unknown', 'unavailable']
+                         and states(domres_button) not in ['unknown', 'unavailable'] }}
+                sequence:
+                  - service: number.set_value
+                    target:
+                      entity_id: !input domres_number
+                    data:
+                      value: "{{ states(current_reading_sensor) | int(0) }}"
+                    continue_on_error: true
+                  - choose:
+                      - conditions:
+                          - condition: template
+                            value_template: >-
+                              {{ state_attr(domres_number, 'value_set') == true
+                                 and (states(domres_number) | int(-1))
+                                   == (states(current_reading_sensor) | int(-2)) }}
+                        sequence:
+                          - choose:
+                              - conditions:
+                                  - condition: template
+                                    value_template: >-
+                                      {{ state_attr(domres_button, 'submission_enabled') == true }}
+                                sequence:
+                                  - service: button.press
+                                    target:
+                                      entity_id: !input domres_button
+                                    continue_on_error: true
+                                  - service: !input notify_service
+                                    data:
+                                      title: ДомРесурс — срок подачи
+                                      message: >-
+                                        Для {{ trigger.event.data.get('account_name') or trigger.event.data.get('account_id', 'лицевого счёта') }}
+                                        подготовлено и отправлено значение {{ states(current_reading_sensor) | int(0) }}.
+                              - default:
+                                  - service: !input notify_service
+                                    data:
+                                      title: ДомРесурс — отправка пока отключена
+                                      message: >-
+                                        Срок подачи для {{ trigger.event.data.get('account_name') or trigger.event.data.get('account_id', 'лицевого счёта') }}:
+                                        осталось {{ trigger.event.data.get('days_remaining', '—') }} дн.
+                                        Значение {{ states(current_reading_sensor) | int(0) }} подготовлено,
+                                        но не отправлено: интеграция пока не отправляет значение до проверки API.
+                      - default:
+                          - service: !input notify_service
+                            data:
+                              title: ДомРесурс — показание не подготовлено
+                              message: >-
+                                Пришло событие срока подачи для
+                                {{ trigger.event.data.get('account_name') or trigger.event.data.get('account_id', 'лицевого счёта') }},
+                                но числовое поле не приняло значение из выбранного сенсора.
+                  - stop: Автозаполнение завершено
+              - default:
+                  - service: !input notify_service
+                    data:
+                      title: ДомРесурс — срок подачи показаний
+                      message: >-
+                        Для {{ trigger.event.data.get('account_name') or trigger.event.data.get('account_id', 'лицевого счёта') }}
+                        осталось {{ trigger.event.data.get('days_remaining', '—') }} дн.
+                        Автозаполнение не выполнено: внешний сенсор недоступен, значение меньше допустимого
+                        минимума или выбраны сущности другого счёта/шкалы.
+
+mode: queued
+max: 10
