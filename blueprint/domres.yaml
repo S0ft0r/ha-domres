@@ -10,8 +10,8 @@ blueprint:
   source_url: https://github.com/S0ft0r/ha-domres/blob/main/blueprint/domres.yaml
   input:
     notify_service:
-      name: Сервис уведомлений
-      description: Например, notify.mobile_app_telefon. Одинаковый сервис используется для обоих событий.
+      name: Сервисы уведомлений
+      description: Выберите один или несколько notify-объектов; они получат оба типа уведомлений.
       selector:
         entity:
           filter:
@@ -39,7 +39,6 @@ blueprint:
           domain: button
 
 variables:
-  notify_service: !input notify_service
   current_reading_sensor: !input current_reading_sensor
   domres_number: !input domres_number
   domres_button: !input domres_button
@@ -66,7 +65,9 @@ action:
           - condition: trigger
             id: unpaid_bill
         sequence:
-          - service: !input notify_service
+          - service: notify.send_message
+            target:
+              entity_id: !input notify_service
             data:
               title: ДомРесурс — задолженность
               message: >-
@@ -131,23 +132,30 @@ action:
                                     target:
                                       entity_id: !input domres_button
                                     continue_on_error: true
-                                  - service: !input notify_service
+                                  - service: notify.send_message
+                                    target:
+                                      entity_id: !input notify_service
                                     data:
                                       title: ДомРесурс — срок подачи
                                       message: >-
                                         Для {{ trigger.event.data.get('account_name') or trigger.event.data.get('account_id', 'лицевого счёта') }}
-                                        подготовлено и отправлено значение {{ states(current_reading_sensor) | int(0) }}.
+                                        подготовлено значение {{ states(current_reading_sensor) | int(0) }}.
+                                        Команда нажатия кнопки вызвана; проверьте результат на сайте ДомРесурса.
                               - default:
-                                  - service: !input notify_service
+                                  - service: notify.send_message
+                                    target:
+                                      entity_id: !input notify_service
                                     data:
                                       title: ДомРесурс — отправка пока отключена
                                       message: >-
                                         Срок подачи для {{ trigger.event.data.get('account_name') or trigger.event.data.get('account_id', 'лицевого счёта') }}:
                                         осталось {{ trigger.event.data.get('days_remaining', '—') }} дн.
                                         Значение {{ states(current_reading_sensor) | int(0) }} подготовлено,
-                                        но не отправлено: интеграция пока не отправляет значение до проверки API.
+                                        но не отправлено: интеграция пока отключает кнопку до проверки API.
                       - default:
-                          - service: !input notify_service
+                          - service: notify.send_message
+                            target:
+                              entity_id: !input notify_service
                             data:
                               title: ДомРесурс — показание не подготовлено
                               message: >-
@@ -156,7 +164,9 @@ action:
                                 но числовое поле не приняло значение из выбранного сенсора.
                   - stop: Автозаполнение завершено
               - default:
-                  - service: !input notify_service
+                  - service: notify.send_message
+                    target:
+                      entity_id: !input notify_service
                     data:
                       title: ДомРесурс — срок подачи показаний
                       message: >-
