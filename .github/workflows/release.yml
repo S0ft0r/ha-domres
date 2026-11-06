@@ -26,8 +26,8 @@ jobs:
       - name: Run unit tests
         run: python -m unittest discover -s tests -v
 
-      - name: Run local validator
-        run: python scripts/validate.py --strict-release
+      - name: Run local source validator
+        run: python scripts/validate.py
 
       - name: Hassfest
         uses: home-assistant/actions/hassfest@master
@@ -39,7 +39,7 @@ jobs:
           category: integration
 
       - name: Require publication metadata
-        run: python scripts/validate.py --strict-release --strict-publication
+        run: python scripts/validate.py --strict-publication
 
   release:
     name: Publish a newly validated version
@@ -73,6 +73,22 @@ jobs:
             echo "main advanced after validation; refusing to publish a stale commit"
             exit 1
           fi
+
+      - name: Build or verify retained delta archive
+        if: steps.release_gate.outputs.should_release == 'true'
+        env:
+          VERSION: ${{ steps.release_gate.outputs.version }}
+        run: |
+          if [ -f release/.build_state.json ]; then
+            python scripts/build_release.py --check
+          elif [ -n "$(git tag --list 'v0.1.*')" ]; then
+            echo "Release tags exist but release build state is missing; refusing to publish a full snapshot as a delta." >&2
+            exit 1
+          else
+            python scripts/build_release.py --bootstrap-current-version
+          fi
+          test -f "release/domres_${VERSION}_changed_files.zip"
+          python scripts/validate.py --strict-release --strict-publication
 
       - name: Build installable integration ZIP
         if: steps.release_gate.outputs.should_release == 'true'

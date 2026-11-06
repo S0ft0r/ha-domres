@@ -24,8 +24,8 @@ jobs:
       - name: Run unit tests
         run: python -m unittest discover -s tests -v
 
-      - name: Run local validator and release-state check
-        run: python scripts/validate.py --strict-release
+      - name: Run local source validator
+        run: python scripts/validate.py
 
       - name: Hassfest
         uses: home-assistant/actions/hassfest@master

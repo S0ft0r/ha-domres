@@ -347,6 +347,8 @@ def validate(
             errors.append("Validation workflow must include HACS integration validation")
         if "home-assistant/actions/hassfest@" not in workflow_text:
             errors.append("Validation workflow must include Hassfest")
+        if "scripts/validate.py --strict-release" in workflow_text:
+            errors.append("Source validation workflow must not require a pre-existing release archive")
 
     release_workflow = ROOT / ".github/workflows/release.yml"
     if release_workflow.is_file():
@@ -355,6 +357,10 @@ def validate(
             errors.append("Release workflow must not publish from tags or manual dispatch")
         if "branches:" not in release_text or "needs:" not in release_text:
             errors.append("Release workflow must gate publication on validated main-branch jobs")
+        bootstrap_position = release_text.find("--bootstrap-current-version")
+        strict_position = release_text.find("--strict-release --strict-publication")
+        if bootstrap_position < 0 or strict_position < bootstrap_position:
+            errors.append("Release workflow must create/verify the delta archive before strict release validation")
 
     release_dir = ROOT / "release"
     for archive_path in sorted(release_dir.glob("*.zip")) if release_dir.is_dir() else []:

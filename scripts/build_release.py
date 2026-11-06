@@ -170,8 +170,16 @@ def _save_state(root: Path, state: dict[str, Any]) -> None:
     os.replace(temporary, path)
 
 
-def build_delta(root: Path = ROOT) -> tuple[Path, list[str], list[str]]:
-    """Create the next retained delta archive and update build state."""
+def build_delta(
+    root: Path = ROOT,
+    *,
+    bootstrap_current_version: bool = False,
+) -> tuple[Path, list[str], list[str]]:
+    """Create the next retained delta archive and update build state.
+
+    The first local build normally starts at 0.1.0. CI may bootstrap the first
+    baseline at the manifest's current 0.1.N version when no release state exists.
+    """
     root = root.resolve()
     manifest = _read_manifest(root)
     current_version = str(manifest.get("version", ""))
@@ -181,7 +189,7 @@ def build_delta(root: Path = ROOT) -> tuple[Path, list[str], list[str]]:
     release_dir.mkdir(parents=True, exist_ok=True)
 
     if state is None:
-        if current_version != INITIAL_VERSION:
+        if current_version != INITIAL_VERSION and not bootstrap_current_version:
             raise BuildError(
                 f"The first build must start at {INITIAL_VERSION}; got {current_version}"
             )
@@ -325,6 +333,11 @@ def main(argv: list[str] | None = None) -> int:
         metavar="PATH",
         help="create an installable ZIP containing only custom_components/domres",
     )
+    parser.add_argument(
+        "--bootstrap-current-version",
+        action="store_true",
+        help="allow the first archive to use the current 0.1.N version (CI bootstrap only)",
+    )
     args = parser.parse_args(argv)
     try:
         if args.check:
@@ -334,7 +347,10 @@ def main(argv: list[str] | None = None) -> int:
             output = build_component_zip(ROOT, args.component_zip)
             print(f"Created integration ZIP: {output}")
         else:
-            path, changed, deleted = build_delta(ROOT)
+            path, changed, deleted = build_delta(
+                ROOT,
+                bootstrap_current_version=args.bootstrap_current_version,
+            )
             print(f"Created {path.relative_to(ROOT)}")
             print(f"Changed files ({len(changed)}):")
             for name in changed:

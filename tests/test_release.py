@@ -47,6 +47,23 @@ class ReleaseBuilderTests(unittest.TestCase):
         self.assertNotIn("internal/decision.md", names)
         verify_current_state(self.root)
 
+    def test_ci_bootstrap_can_create_first_archive_at_current_patch_version(self) -> None:
+        manifest_path = self.root / "custom_components/domres/manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["version"] = "0.1.4"
+        manifest_path.write_text(json.dumps(manifest) + "\n", encoding="utf-8")
+
+        with self.assertRaises(BuildError):
+            build_delta(self.root)
+        archive_path, changed, _ = build_delta(
+            self.root,
+            bootstrap_current_version=True,
+        )
+
+        self.assertEqual(archive_path.name, "domres_0.1.4_changed_files.zip")
+        self.assertIn("custom_components/domres/__init__.py", changed)
+        verify_current_state(self.root)
+
     def test_next_build_bumps_patch_and_keeps_previous_archive(self) -> None:
         first_archive, _, _ = build_delta(self.root)
         (self.root / "custom_components/domres/api.py").write_text("# changed\n", encoding="utf-8")
