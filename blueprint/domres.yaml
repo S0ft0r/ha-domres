@@ -30,13 +30,15 @@ blueprint:
       description: Выберите поле «Показание» нужного счётчика и шкалы.
       selector:
         entity:
-          domain: number
+            domain: number
+            integration: domres
     domres_button:
       name: Кнопка ДомРесурса
       description: Выберите кнопку «Отправить» для того же счётчика и шкалы.
       selector:
         entity:
-          domain: button
+            domain: button
+            integration: domres
 
 variables:
   current_reading_sensor: !input current_reading_sensor
