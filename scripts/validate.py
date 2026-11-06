@@ -120,7 +120,6 @@ def validate(
     required_files = (
         COMPONENT / "__init__.py",
         COMPONENT / "api.py",
-        COMPONENT / "binary_sensor.py",
         COMPONENT / "config_flow.py",
         COMPONENT / "const.py",
         COMPONENT / "coordinator.py",
@@ -357,6 +356,8 @@ def validate(
             errors.append("Release workflow must not publish from tags or manual dispatch")
         if "branches:" not in release_text or "needs:" not in release_text:
             errors.append("Release workflow must gate publication on validated main-branch jobs")
+        if re.search(r"(?m)^\s*sleep\s+120\s*$", release_text):
+            errors.append("Release workflow must not use a fixed two-minute delay")
         bootstrap_position = release_text.find("--bootstrap-current-version")
         strict_position = release_text.find("--strict-release --strict-publication")
         if bootstrap_position < 0 or strict_position < bootstrap_position:

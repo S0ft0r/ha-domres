@@ -14,7 +14,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN, NAME
 from .coordinator import DomResCoordinator
-from .data import numeric_value
+from .data import integer_days, numeric_value, russian_day_unit
 
 
 def _balance_value(snapshot: dict[str, Any], key: str) -> float | None:
@@ -24,11 +24,11 @@ def _balance_value(snapshot: dict[str, Any], key: str) -> float | None:
     return numeric_value(summary.get(key))
 
 
-def _days_value(snapshot: dict[str, Any]) -> float | None:
+def _days_value(snapshot: dict[str, Any]) -> int | None:
     availability = snapshot.get("availability")
     if not isinstance(availability, dict):
         return None
-    return numeric_value(availability.get("days"))
+    return integer_days(availability.get("days"))
 
 
 def _reading_units(raw_unit: Any) -> tuple[str | None, SensorDeviceClass | None, SensorStateClass | None]:
@@ -128,18 +128,23 @@ class DomResFineSensor(_DomResSensor):
 
 
 class DomResDaysSensor(_DomResSensor):
-    """Number of days remaining in the current indication period."""
+    """Integer count of days remaining in the current indication period."""
 
-    _attr_native_unit_of_measurement = "d"
     _attr_icon = "mdi:calendar-clock"
 
     def __init__(self, coordinator: DomResCoordinator, entry: ConfigEntry, snapshot: dict[str, Any]) -> None:
-        super().__init__(coordinator, entry, snapshot, "indication_days", "Дней до окончания периода")
+        super().__init__(coordinator, entry, snapshot, "indication_days", "До конца периода")
 
     @property
-    def native_value(self) -> float | None:
+    def native_value(self) -> int | None:
         snapshot = self._snapshot
         return _days_value(snapshot) if snapshot else None
+
+    @property
+    def native_unit_of_measurement(self) -> str | None:
+        """Use the Russian singular, paucal, or plural form for the current count."""
+        days = self.native_value
+        return russian_day_unit(days) if days is not None else None
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:

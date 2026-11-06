@@ -24,6 +24,8 @@ _spec.loader.exec_module(_data)
 login_type = _data.login_type
 normalize_meters = _data.normalize_meters
 numeric_value = _data.numeric_value
+integer_days = _data.integer_days
+russian_day_unit = _data.russian_day_unit
 
 
 class LoginTypeTests(unittest.TestCase):
@@ -42,6 +44,30 @@ class NumericValueTests(unittest.TestCase):
     def test_rejects_boolean_and_non_numeric_text(self) -> None:
         self.assertIsNone(numeric_value(True))
         self.assertIsNone(numeric_value("нет данных"))
+
+
+class DayValueTests(unittest.TestCase):
+    def test_parses_only_whole_days_as_integer(self) -> None:
+        self.assertEqual(integer_days("19"), 19)
+        self.assertEqual(integer_days("19.0"), 19)
+        self.assertIsNone(integer_days("19.5"))
+        self.assertIsNone(integer_days("нет данных"))
+
+    def test_russian_day_unit_uses_correct_plural_form(self) -> None:
+        cases = {
+            1: "день",
+            2: "дня",
+            4: "дня",
+            5: "дней",
+            11: "дней",
+            14: "дней",
+            21: "день",
+            22: "дня",
+            25: "дней",
+        }
+        for value, expected in cases.items():
+            with self.subTest(value=value):
+                self.assertEqual(russian_day_unit(value), expected)
 
 
 class MeterNormalizationTests(unittest.TestCase):

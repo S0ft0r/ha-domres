@@ -37,6 +37,27 @@ def numeric_value(value: Any) -> float | None:
     return None
 
 
+def integer_days(value: Any) -> int | None:
+    """Parse the API's whole-day count without exposing a float sensor state."""
+    number = numeric_value(value)
+    if number is None or not number.is_integer():
+        return None
+    return int(number)
+
+
+def russian_day_unit(days: int) -> str:
+    """Return the grammatically correct Russian form for a day count."""
+    last_two = abs(days) % 100
+    if 11 <= last_two <= 14:
+        return "дней"
+    last = abs(days) % 10
+    if last == 1:
+        return "день"
+    if 2 <= last <= 4:
+        return "дня"
+    return "дней"
+
+
 def _list_from_payload(payload: Any) -> list[Any]:
     if isinstance(payload, list):
         return payload
