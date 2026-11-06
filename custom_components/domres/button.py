@@ -21,7 +21,7 @@ class DomResSubmitReadingButton(CoordinatorEntity[DomResCoordinator], ButtonEnti
     """Visible send-button scaffold that explicitly refuses to transmit data."""
 
     _attr_has_entity_name = True
-    _attr_icon = "mdi:send"
+    _attr_icon = "mdi:invoice-text-send-outline"
 
     def __init__(
         self,
@@ -47,7 +47,7 @@ class DomResSubmitReadingButton(CoordinatorEntity[DomResCoordinator], ButtonEnti
             f"{entry.entry_id}_{self._account_id}_reading_submit_"
             f"{meter_scale_key(meter, scale, index)}"
         )
-        self._attr_name = f"Отправить — {meter['name']} — {scale['name']}"
+        self._attr_name = "Отправить"
         self._attr_device_info = account_device_info(entry, snapshot)
 
     @property

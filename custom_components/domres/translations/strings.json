@@ -12,6 +12,20 @@
         "data_description": {
           "username": "Enter the phone number or email used at registration as your login."
         }
+      },
+      "reconfigure": {
+        "title": "Reconfigure DomRes",
+        "description": "Verify the existing DomRes account with updated credentials. Leave the password blank to keep the current one.",
+        "data": {
+          "username": "Phone or email",
+          "password": "New password (optional)",
+          "customer": "API Customer header (optional)"
+        },
+        "data_description": {
+          "username": "The login must remain linked to the same DomRes account.",
+          "password": "Leave blank to keep the saved password.",
+          "customer": "Leave blank if this account does not require a Customer header."
+        }
       }
     },
     "error": {
@@ -21,7 +35,11 @@
       "no_accounts": "No accounts were found for this user."
     },
     "abort": {
-      "already_configured": "This account is already configured."
+      "already_configured": "This account is already configured.",
+      "wrong_account": "This entry cannot be switched to a different DomRes account. Remove it and add the other account instead."
+    },
+    "initiate_flow": {
+      "reconfigure": "Reconfigure"
     }
   },
   "options": {
@@ -33,7 +51,7 @@
           "deadline_days": "Days before the end of the period"
         },
         "data_description": {
-          "deadline_days": "Use 0 to raise the event on the last day. Allowed range: 0–31 days."
+          "deadline_days": "Enter 1–7 days before the end of the period."
         }
       }
     }

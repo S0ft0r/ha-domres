@@ -54,8 +54,8 @@ class DomResEventTracker:
     """Emit the deadline event per active window and unpaid event once per period."""
 
     def __init__(self, deadline_days: int, stored_state: dict[str, Any] | None = None) -> None:
-        if not 0 <= deadline_days <= 31:
-            raise ValueError("deadline_days must be between 0 and 31")
+        if not 1 <= deadline_days <= 7:
+            raise ValueError("deadline_days must be between 1 and 7")
         self.deadline_days = deadline_days
         self._deadline_notified: set[str] = set()
         self._unpaid_notified_periods: dict[str, str] = {}

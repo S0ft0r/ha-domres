@@ -34,6 +34,47 @@ class StaticValidationTests(unittest.TestCase):
         self.assertIn('name = "Последние показания"', last_readings_class)
         self.assertNotIn("meter['name']", last_readings_class)
 
+    def test_sensor_platform_imports_domain_for_platform_setup(self) -> None:
+        component = Path(__file__).resolve().parents[1] / "custom_components/domres"
+        sensor_source = (component / "sensor.py").read_text(encoding="utf-8")
+        self.assertIn("from .const import DOMAIN", sensor_source)
+
+    def test_legacy_reading_names_are_migrated_and_custom_names_preserved(self) -> None:
+        component = Path(__file__).resolve().parents[1] / "custom_components/domres"
+        setup_source = (component / "__init__.py").read_text(encoding="utf-8")
+        self.assertIn("_shorten_last_reading_names(hass, entry)", setup_source)
+        self.assertIn('"_reading_" not in entity.unique_id', setup_source)
+        self.assertIn('entity.name.startswith(old_prefixes)', setup_source)
+        self.assertIn('name="Последние показания"', setup_source)
+
+    def test_reconfigure_action_is_implemented_and_translated(self) -> None:
+        component = Path(__file__).resolve().parents[1] / "custom_components/domres"
+        flow_source = (component / "config_flow.py").read_text(encoding="utf-8")
+        self.assertIn("async def async_step_reconfigure", flow_source)
+        self.assertIn("async_update_reload_and_abort", flow_source)
+        self.assertIn("_abort_if_unique_id_mismatch(reason=\"wrong_account\")", flow_source)
+        for language in ("ru", "en", "strings"):
+            translation = (component / "translations" / f"{language}.json").read_text(
+                encoding="utf-8"
+            )
+            self.assertIn('"reconfigure"', translation)
+            self.assertIn('"wrong_account"', translation)
+
+    def test_balance_labels_and_requested_icons(self) -> None:
+        component = Path(__file__).resolve().parents[1] / "custom_components/domres"
+        sensor_source = (component / "sensor.py").read_text(encoding="utf-8")
+        button_source = (component / "button.py").read_text(encoding="utf-8")
+        debt_source = sensor_source.split("class DomResDebtSensor", 1)[1].split(
+            "class DomResFineSensor", 1
+        )[0]
+        fine_source = sensor_source.split("class DomResFineSensor", 1)[1].split(
+            "class DomResDaysSensor", 1
+        )[0]
+        self.assertIn('_attr_icon = "mdi:cash-plus"', debt_source)
+        self.assertIn('"debt", "К оплате"', debt_source)
+        self.assertIn('_attr_icon = "mdi:cash-minus"', fine_source)
+        self.assertIn('_attr_icon = "mdi:invoice-text-send-outline"', button_source)
+
     def test_reading_input_button_is_visible_but_never_sends_network_requests(self) -> None:
         component = Path(__file__).resolve().parents[1] / "custom_components/domres"
         setup_source = (component / "__init__.py").read_text(encoding="utf-8")
@@ -46,6 +87,8 @@ class StaticValidationTests(unittest.TestCase):
         self.assertIn("reading_not_below_previous", button_source)
         self.assertIn("def native_min_value", number_source)
         self.assertIn("reading_not_below_previous", number_source)
+        self.assertIn('self._attr_name = "Показание"', number_source)
+        self.assertIn('self._attr_name = "Отправить"', button_source)
         self.assertNotIn("coordinator.api", button_source)
         self.assertNotIn("_async_request", button_source)
 

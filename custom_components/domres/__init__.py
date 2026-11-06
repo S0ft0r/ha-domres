@@ -14,6 +14,7 @@ from .const import (
     CONF_DEADLINE_DAYS,
     DEFAULT_DEADLINE_DAYS,
     DOMAIN,
+    normalize_deadline_days,
 )
 from .coordinator import DomResCoordinator
 
@@ -28,6 +29,17 @@ def _remove_retired_binary_sensors(hass: HomeAssistant, entry: ConfigEntry) -> N
             registry.async_remove(entity.entity_id)
 
 
+def _shorten_last_reading_names(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Migrate generated legacy reading names while preserving user custom names."""
+    registry = er.async_get(hass)
+    old_prefixes = ("Последнее показание —", "Последние показания —")
+    for entity in er.async_entries_for_config_entry(registry, entry.entry_id):
+        if entity.domain != Platform.SENSOR or "_reading_" not in entity.unique_id:
+            continue
+        if entity.name is None or entity.name.startswith(old_prefixes):
+            registry.async_update_entity(entity.entity_id, name="Последние показания")
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up DomRes from a config entry."""
     api = DomResApi(
@@ -40,7 +52,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass,
         api,
         entry.entry_id,
-        int(entry.options.get(CONF_DEADLINE_DAYS, DEFAULT_DEADLINE_DAYS)),
+        normalize_deadline_days(
+            entry.options.get(CONF_DEADLINE_DAYS, DEFAULT_DEADLINE_DAYS)
+        ),
     )
     await coordinator.async_load_event_state()
     # Let DataUpdateCoordinator translate UpdateFailed into ConfigEntryNotReady.
@@ -48,6 +62,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await coordinator.async_config_entry_first_refresh()
 
     _remove_retired_binary_sensors(hass, entry)
+    _shorten_last_reading_names(hass, entry)
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True

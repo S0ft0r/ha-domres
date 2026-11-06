@@ -42,7 +42,7 @@ class DomResReadingNumber(CoordinatorEntity[DomResCoordinator], NumberEntity):
             f"{entry.entry_id}_{self._account_id}_reading_input_"
             f"{meter_scale_key(meter, scale, index)}"
         )
-        self._attr_name = f"Показание — {meter['name']} — {scale['name']}"
+        self._attr_name = "Показание"
         self._attr_device_info = account_device_info(entry, snapshot)
         unit = scale.get("unit")
         self._attr_native_unit_of_measurement = unit.strip() if isinstance(unit, str) and unit.strip() else None

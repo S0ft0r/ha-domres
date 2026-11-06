@@ -28,7 +28,9 @@ def _load_module(name: str):
 
 
 _load_module("data")
+_constants = _load_module("const")
 _events = _load_module("events")
+normalize_deadline_days = _constants.normalize_deadline_days
 DomResEventTracker = _events.DomResEventTracker
 EVENT_READING_DEADLINE = _events.EVENT_READING_DEADLINE
 EVENT_UNPAID_BILL = _events.EVENT_UNPAID_BILL
@@ -154,6 +156,17 @@ class UnpaidBillEventTests(unittest.TestCase):
         )
         self.assertEqual(tracker.update([bad_period]), [])
 
-    def test_deadline_threshold_is_range_checked(self) -> None:
+    def test_deadline_threshold_is_limited_to_one_through_seven_days(self) -> None:
+        self.assertEqual(DomResEventTracker(deadline_days=1).deadline_days, 1)
+        self.assertEqual(DomResEventTracker(deadline_days=7).deadline_days, 7)
         with self.assertRaises(ValueError):
-            DomResEventTracker(deadline_days=32)
+            DomResEventTracker(deadline_days=0)
+        with self.assertRaises(ValueError):
+            DomResEventTracker(deadline_days=8)
+
+    def test_legacy_deadline_options_are_clamped_into_supported_range(self) -> None:
+        self.assertEqual(normalize_deadline_days(0), 1)
+        self.assertEqual(normalize_deadline_days(8), 7)
+        self.assertEqual(normalize_deadline_days(31), 7)
+        self.assertEqual(normalize_deadline_days("invalid"), 3)
+        self.assertEqual(normalize_deadline_days(None), 3)

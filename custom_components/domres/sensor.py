@@ -11,6 +11,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
+from .const import DOMAIN
 from .coordinator import DomResCoordinator
 from .data import integer_days, numeric_value, russian_day_unit
 from .entity import account_device_info, meter_scale_key
@@ -76,15 +77,15 @@ class _DomResSensor(CoordinatorEntity[DomResCoordinator], SensorEntity):
 
 
 class DomResDebtSensor(_DomResSensor):
-    """Account balance field shown by the service as debt/balance."""
+    """Account amount currently payable by the customer."""
 
     _attr_device_class = SensorDeviceClass.MONETARY
     _attr_native_unit_of_measurement = "RUB"
     _attr_state_class = SensorStateClass.TOTAL
-    _attr_icon = "mdi:cash-minus"
+    _attr_icon = "mdi:cash-plus"
 
     def __init__(self, coordinator: DomResCoordinator, entry: ConfigEntry, snapshot: dict[str, Any]) -> None:
-        super().__init__(coordinator, entry, snapshot, "debt", "Задолженность")
+        super().__init__(coordinator, entry, snapshot, "debt", "К оплате")
 
     @property
     def native_value(self) -> float | None:
@@ -105,7 +106,7 @@ class DomResFineSensor(_DomResSensor):
     _attr_device_class = SensorDeviceClass.MONETARY
     _attr_native_unit_of_measurement = "RUB"
     _attr_state_class = SensorStateClass.TOTAL
-    _attr_icon = "mdi:cash-alert"
+    _attr_icon = "mdi:cash-minus"
 
     def __init__(self, coordinator: DomResCoordinator, entry: ConfigEntry, snapshot: dict[str, Any]) -> None:
         super().__init__(coordinator, entry, snapshot, "fine", "Пени")

@@ -27,6 +27,7 @@ from .const import (
     MAX_DEADLINE_DAYS,
     MIN_DEADLINE_DAYS,
     NAME,
+    normalize_deadline_days,
 )
 
 
@@ -62,6 +63,69 @@ class DomResConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     def async_get_options_flow(config_entry: ConfigEntry) -> DomResOptionsFlow:
         """Expose the configurable notice threshold for indication deadlines."""
         return DomResOptionsFlow()
+
+    async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> config_entries.FlowResult:
+        """Let the user renew credentials without deleting the existing entry."""
+        entry = self._get_reconfigure_entry()
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            login = str(
+                user_input.get(CONF_USERNAME, entry.data[CONF_USERNAME])
+            ).strip()
+            password = str(
+                user_input.get(CONF_PASSWORD) or entry.data[CONF_PASSWORD]
+            )
+            customer = str(user_input.get(CONF_CUSTOMER, "")).strip() or None
+            if not login or not password:
+                errors["base"] = "invalid_auth"
+            else:
+                try:
+                    await _async_validate_credentials(
+                        self.hass,
+                        login,
+                        password,
+                        customer,
+                    )
+                except DomResAuthenticationError:
+                    errors["base"] = "invalid_auth"
+                except DomResVerificationRequired:
+                    errors["base"] = "verification_required"
+                except DomResNoAccounts:
+                    errors["base"] = "no_accounts"
+                except DomResApiError:
+                    errors["base"] = "cannot_connect"
+                else:
+                    await self.async_set_unique_id(_unique_login(login))
+                    self._abort_if_unique_id_mismatch(reason="wrong_account")
+                    return self.async_update_reload_and_abort(
+                        entry,
+                        data_updates={
+                            CONF_USERNAME: login,
+                            CONF_PASSWORD: password,
+                            CONF_CUSTOMER: customer or "",
+                        },
+                    )
+
+        schema = vol.Schema(
+            {
+                vol.Required(
+                    CONF_USERNAME,
+                    default=entry.data[CONF_USERNAME],
+                ): str,
+                vol.Optional(CONF_PASSWORD, default=""): str,
+                vol.Optional(
+                    CONF_CUSTOMER,
+                    default=entry.data.get(CONF_CUSTOMER, ""),
+                ): str,
+            }
+        )
+        return self.async_show_form(
+            step_id="reconfigure",
+            data_schema=schema,
+            errors=errors,
+        )
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -121,9 +185,11 @@ class DomResOptionsFlow(OptionsFlowWithReload):
         if user_input is not None:
             return self.async_create_entry(data=user_input)
 
-        default_days = self.config_entry.options.get(
-            CONF_DEADLINE_DAYS,
-            DEFAULT_DEADLINE_DAYS,
+        default_days = normalize_deadline_days(
+            self.config_entry.options.get(
+                CONF_DEADLINE_DAYS,
+                DEFAULT_DEADLINE_DAYS,
+            )
         )
         schema = vol.Schema(
             {
@@ -140,6 +206,6 @@ class DomResOptionsFlow(OptionsFlowWithReload):
             step_id="init",
             data_schema=self.add_suggested_values_to_schema(
                 schema,
-                self.config_entry.options,
+                {CONF_DEADLINE_DAYS: default_days},
             ),
         )
