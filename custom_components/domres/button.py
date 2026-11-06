@@ -62,6 +62,16 @@ class DomResSubmitReadingButton(CoordinatorEntity[DomResCoordinator], ButtonEnti
         )
         return current if current is not None else self._initial_previous_reading
 
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Expose identity and the current fail-closed sending capability."""
+        return {
+            "account_id": self._account_id,
+            "meter_id": self._meter_id,
+            "scale_id": self._scale_id,
+            "submission_enabled": False,
+        }
+
     async def async_press(self) -> None:
         """Validate monotonicity, then fail closed until a write contract is verified."""
         if self._input_key not in self.coordinator.reading_values:

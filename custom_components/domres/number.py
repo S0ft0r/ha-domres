@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 from homeassistant.components.number import NumberEntity, NumberMode
@@ -12,7 +13,12 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
 from .coordinator import DomResCoordinator
-from .data import previous_reading_for_scale, reading_not_below_previous
+from .data import (
+    integer_reading,
+    numeric_value,
+    previous_reading_for_scale,
+    reading_not_below_previous,
+)
 from .entity import account_device_info, meter_scale_key, reading_input_key
 
 
@@ -22,9 +28,9 @@ class DomResReadingNumber(CoordinatorEntity[DomResCoordinator], NumberEntity):
     _attr_has_entity_name = True
     _attr_icon = "mdi:counter"
     _attr_mode = NumberMode.BOX
-    _attr_native_max_value = 1_000_000_000.0
-    _attr_native_step = 0.001
-    _attr_suggested_display_precision = 3
+    _attr_native_max_value = 1_000_000_000
+    _attr_native_step = 1
+    _attr_suggested_display_precision = 0
 
     def __init__(
         self,
@@ -58,8 +64,8 @@ class DomResReadingNumber(CoordinatorEntity[DomResCoordinator], NumberEntity):
         self._meter_registration = meter.get("registration")
 
     @property
-    def previous_reading(self) -> float | None:
-        """Return the latest reported value for this exact account/meter/scale."""
+    def previous_reading_raw(self) -> float | None:
+        """Return the untruncated API value for safe monotonicity checks."""
         data = self.coordinator.data or {}
         current = previous_reading_for_scale(
             data.get("accounts", []),
@@ -70,28 +76,38 @@ class DomResReadingNumber(CoordinatorEntity[DomResCoordinator], NumberEntity):
         return current if current is not None else self._initial_previous_reading
 
     @property
-    def native_min_value(self) -> float:
-        """Prevent entering a value below the last reported reading."""
-        previous = self.previous_reading
-        return max(0.0, previous) if previous is not None else 0.0
+    def previous_reading(self) -> int | None:
+        """Return the reported reading with its fractional part discarded."""
+        return integer_reading(self.previous_reading_raw)
 
     @property
-    def native_max_value(self) -> float:
+    def native_min_value(self) -> int:
+        """Use the smallest integer that is not below the exact previous value."""
+        previous = self.previous_reading_raw
+        if previous is None or not math.isfinite(previous):
+            return 0
+        return max(0, math.ceil(previous))
+
+    @property
+    def native_max_value(self) -> int:
         """Keep the upper bound above the previous value for unusual meters."""
-        return max(float(self._attr_native_max_value), self.native_min_value)
+        return max(self._attr_native_max_value, self.native_min_value)
 
     @property
-    def native_value(self) -> float:
-        """Return the entered value, prefilling the field with the last reading."""
+    def native_value(self) -> int:
+        """Return the entered integer, prefilling the field with the last reading."""
         return self.coordinator.reading_values.get(self._input_key, self.native_min_value)
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         return {
+            "account_id": self._account_id,
+            "meter_id": self._meter_id,
             "meter_serial": self._meter_serial,
             "meter_registration": self._meter_registration,
             "scale_id": self._scale_id,
             "previous_reading": self.previous_reading,
+            "minimum_allowed": self.native_min_value,
             "value_set": self._input_key in self.coordinator.reading_values,
             "submission_enabled": False,
         }
@@ -101,19 +117,22 @@ class DomResReadingNumber(CoordinatorEntity[DomResCoordinator], NumberEntity):
         current_value = self.coordinator.reading_values.get(self._input_key)
         if current_value is not None and not reading_not_below_previous(
             current_value,
-            self.previous_reading,
+            self.previous_reading_raw,
         ):
             self.coordinator.reading_values[self._input_key] = self.native_min_value
         super()._handle_coordinator_update()
 
     async def async_set_native_value(self, value: float) -> None:
-        """Store a draft only when it is at least the previous reported value."""
-        numeric_value = float(value)
-        if not reading_not_below_previous(numeric_value, self.previous_reading):
+        """Store the truncated integer draft without lowering the exact previous value."""
+        raw_value = numeric_value(value)
+        integer_value = integer_reading(value)
+        if raw_value is None or integer_value is None or raw_value < 0:
+            raise ValueError("Meter reading must be a finite, non-negative number")
+        if not reading_not_below_previous(integer_value, self.previous_reading_raw):
             raise ValueError("Новое показание не может быть меньше предыдущего")
-        if not self.native_min_value <= numeric_value <= self.native_max_value:
-            raise ValueError("Meter reading is outside the allowed numeric range")
-        self.coordinator.reading_values[self._input_key] = numeric_value
+        if not self.native_min_value <= integer_value <= self.native_max_value:
+            raise ValueError("Meter reading is outside the allowed integer range")
+        self.coordinator.reading_values[self._input_key] = integer_value
         self.async_write_ha_state()
 
 

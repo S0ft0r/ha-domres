@@ -25,6 +25,7 @@ login_type = _data.login_type
 normalize_meters = _data.normalize_meters
 numeric_value = _data.numeric_value
 integer_days = _data.integer_days
+integer_reading = _data.integer_reading
 russian_day_unit = _data.russian_day_unit
 reading_not_below_previous = _data.reading_not_below_previous
 previous_reading_for_scale = _data.previous_reading_for_scale
@@ -46,6 +47,13 @@ class NumericValueTests(unittest.TestCase):
     def test_rejects_boolean_and_non_numeric_text(self) -> None:
         self.assertIsNone(numeric_value(True))
         self.assertIsNone(numeric_value("нет данных"))
+
+    def test_meter_readings_are_truncated_to_integer(self) -> None:
+        self.assertEqual(integer_reading(125.9), 125)
+        self.assertEqual(integer_reading("81,7"), 81)
+        self.assertEqual(integer_reading(42), 42)
+        self.assertIsNone(integer_reading("нет данных"))
+        self.assertIsNone(integer_reading(float("inf")))
 
 
 class DayValueTests(unittest.TestCase):

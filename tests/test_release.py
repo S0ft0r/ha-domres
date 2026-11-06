@@ -26,6 +26,7 @@ class ReleaseBuilderTests(unittest.TestCase):
         (self.root / "custom_components/domres").mkdir(parents=True)
         (self.root / "scripts").mkdir()
         (self.root / "tests").mkdir()
+        (self.root / "blueprint").mkdir(parents=True)
         (self.root / ".github/workflows").mkdir(parents=True)
         (self.root / "custom_components/domres/manifest.json").write_text(
             json.dumps({"domain": "domres", "version": "0.1.0"}, indent=2) + "\n",
@@ -34,6 +35,9 @@ class ReleaseBuilderTests(unittest.TestCase):
         (self.root / "custom_components/domres/__init__.py").write_text("# initial\n", encoding="utf-8")
         (self.root / "scripts/validate.py").write_text("# validator\n", encoding="utf-8")
         (self.root / "tests/test_smoke.py").write_text("# tests\n", encoding="utf-8")
+        (self.root / "blueprint/example.yaml").write_text(
+            "blueprint: {}\n", encoding="utf-8"
+        )
         (self.root / ".github/workflows/validate.yml").write_text("name: validate\n", encoding="utf-8")
         (self.root / "README.md").write_text("Public documentation\n", encoding="utf-8")
         (self.root / "internal").mkdir()
@@ -48,10 +52,12 @@ class ReleaseBuilderTests(unittest.TestCase):
         self.assertIn("custom_components/domres/__init__.py", changed)
         self.assertIn("scripts/validate.py", changed)
         self.assertIn("tests/test_smoke.py", changed)
+        self.assertNotIn("blueprint/example.yaml", changed)
         self.assertIn(".github/workflows/validate.yml", changed)
         with zipfile.ZipFile(archive_path) as archive:
             names = set(archive.namelist())
         self.assertIn("README.md", names)
+        self.assertNotIn("blueprint/example.yaml", names)
         self.assertNotIn("internal/decision.md", names)
         verify_current_state(self.root)
 

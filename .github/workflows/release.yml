@@ -73,7 +73,8 @@ jobs:
             exit 1
           fi
 
-      - name: Build or verify retained delta archive
+      # Keep the delta for source tracking and strict validation; do not publish it as a release asset.
+      - name: Build or verify retained internal delta archive
         if: steps.release_gate.outputs.should_release == 'true'
         env:
           VERSION: ${{ steps.release_gate.outputs.version }}
@@ -125,10 +126,8 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ steps.release_gate.outputs.tag }}
-          VERSION: ${{ steps.release_gate.outputs.version }}
         run: |
-          DELTA="release/domres_${VERSION}_changed_files.zip"
-          gh release create "$TAG" "$DELTA" domres.zip \
+          gh release create "$TAG" domres.zip \
             --target "$GITHUB_SHA" \
             --title "ДомРесурс $TAG" \
             --notes-file release_notes.md

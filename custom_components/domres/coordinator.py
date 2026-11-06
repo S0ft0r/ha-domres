@@ -44,7 +44,7 @@ class DomResCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._deadline_days = deadline_days
         self._event_store = Store(hass, 1, f"{DOMAIN}_{entry_id}_event_state")
         self.event_tracker = DomResEventTracker(deadline_days)
-        self.reading_values: dict[str, float] = {}
+        self.reading_values: dict[str, int] = {}
 
     async def async_load_event_state(self) -> None:
         """Restore unpaid-event period markers before the first refresh."""

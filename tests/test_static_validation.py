@@ -34,6 +34,8 @@ class StaticValidationTests(unittest.TestCase):
         )[0]
         self.assertIn("_attr_has_entity_name = False", last_readings_class)
         self.assertIn('name = "Последние показания"', last_readings_class)
+        self.assertIn("def native_value(self) -> int | None", last_readings_class)
+        self.assertIn("integer_reading(scale.get(\"previous_reading\"))", last_readings_class)
         self.assertNotIn("meter['name']", last_readings_class)
 
     def test_sensor_platform_imports_domain_for_platform_setup(self) -> None:
@@ -80,6 +82,21 @@ class StaticValidationTests(unittest.TestCase):
         self.assertIn('_attr_icon = "mdi:cash-minus"', fine_source)
         self.assertIn('_attr_icon = "mdi:invoice-text-send-outline"', button_source)
 
+    def test_domres_event_blueprint_notifies_and_gates_submission(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        blueprint = (root / "blueprint/domres.yaml").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("domres_reading_deadline", blueprint)
+        self.assertIn("domres_unpaid_bill", blueprint)
+        self.assertIn("!input notify_service", blueprint)
+        self.assertIn("service: notify.send_message", blueprint)
+        self.assertNotIn("service: !input notify_service", blueprint)
+        self.assertIn("number.set_value", blueprint)
+        self.assertIn("button.press", blueprint)
+        self.assertIn("submission_enabled", blueprint)
+        self.assertIn("minimum_allowed", blueprint)
+
     def test_brand_icons_use_home_assistant_png_sizes(self) -> None:
         component = Path(__file__).resolve().parents[1] / "custom_components/domres"
         dimensions = {
@@ -105,8 +122,16 @@ class StaticValidationTests(unittest.TestCase):
         self.assertIn("reading_not_below_previous", button_source)
         self.assertIn("def native_min_value", number_source)
         self.assertIn("reading_not_below_previous", number_source)
+        self.assertIn("_attr_native_step = 1", number_source)
+        self.assertIn("_attr_suggested_display_precision = 0", number_source)
+        self.assertIn("integer_reading(value)", number_source)
+        self.assertIn("def native_value(self) -> int", number_source)
         self.assertIn('self._attr_name = "Показание"', number_source)
         self.assertIn('self._attr_name = "Отправить"', button_source)
+        self.assertIn('"account_id": self._account_id', number_source)
+        self.assertIn('"minimum_allowed": self.native_min_value', number_source)
+        self.assertIn('"submission_enabled": False', button_source)
+        self.assertIn('"account_id": self._account_id', button_source)
         self.assertNotIn("coordinator.api", button_source)
         self.assertNotIn("_async_request", button_source)
 

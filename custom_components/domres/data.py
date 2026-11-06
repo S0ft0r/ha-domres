@@ -38,6 +38,14 @@ def numeric_value(value: Any) -> float | None:
     return None
 
 
+def integer_reading(value: Any) -> int | None:
+    """Parse a meter reading as an integer, discarding any fractional part."""
+    number = numeric_value(value)
+    if number is None or not math.isfinite(number):
+        return None
+    return int(number)
+
+
 def reading_not_below_previous(value: Any, previous: Any) -> bool:
     """Return whether a proposed reading is numeric and not below the last value."""
     proposed = numeric_value(value)

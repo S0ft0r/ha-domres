@@ -376,6 +376,15 @@ def validate(
         if "refusing to publish a full snapshot as a delta" in release_text:
             errors.append("Release workflow must allow a delta from the latest tag when build state is absent")
 
+        publish_marker = "      - name: Create GitHub Release"
+        if publish_marker not in release_text:
+            errors.append("Release workflow must define a GitHub Release publication step")
+        else:
+            publish_step = release_text.split(publish_marker, 1)[1].split("\n      - name:", 1)[0]
+            asset_names = re.findall(r"(?<![\w$])[\w./-]+\.zip\b", publish_step)
+            if asset_names != ["domres.zip"]:
+                errors.append("GitHub Release must publish only domres.zip; changed-files archives are internal")
+
     release_dir = ROOT / "release"
     for archive_path in sorted(release_dir.glob("*.zip")) if release_dir.is_dir() else []:
         try:

@@ -13,7 +13,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
 from .coordinator import DomResCoordinator
-from .data import integer_days, numeric_value, russian_day_unit
+from .data import integer_days, integer_reading, numeric_value, russian_day_unit
 from .entity import account_device_info, meter_scale_key
 
 
@@ -186,7 +186,7 @@ class DomResLastReadingSensor(_DomResSensor):
         self._raw_unit = scale.get("unit")
 
     @property
-    def native_value(self) -> float | None:
+    def native_value(self) -> int | None:
         snapshot = self._snapshot
         if not snapshot:
             return None
@@ -196,7 +196,7 @@ class DomResLastReadingSensor(_DomResSensor):
                     meter.get("meter_id") == self._meter_id
                     and scale.get("scale_id") == self._scale_id
                 ):
-                    return scale.get("previous_reading")
+                    return integer_reading(scale.get("previous_reading"))
         return None
 
     @property
