@@ -141,39 +141,39 @@ action:
                                         Для {{ trigger.event.data.get('account_name') or trigger.event.data.get('account_id', 'лицевого счёта') }}
                                         подготовлено значение {{ states(current_reading_sensor) | int(0) }}.
                                         Команда нажатия кнопки вызвана; проверьте результат на сайте ДомРесурса.
-                              - default:
-                                  - service: notify.send_message
-                                    target:
-                                      entity_id: !input notify_service
-                                    data:
-                                      title: ДомРесурс — отправка пока отключена
-                                      message: >-
-                                        Срок подачи для {{ trigger.event.data.get('account_name') or trigger.event.data.get('account_id', 'лицевого счёта') }}:
-                                        осталось {{ trigger.event.data.get('days_remaining', '—') }} дн.
-                                        Значение {{ states(current_reading_sensor) | int(0) }} подготовлено,
-                                        но не отправлено: интеграция пока отключает кнопку до проверки API.
-                      - default:
-                          - service: notify.send_message
-                            target:
-                              entity_id: !input notify_service
-                            data:
-                              title: ДомРесурс — показание не подготовлено
-                              message: >-
-                                Пришло событие срока подачи для
-                                {{ trigger.event.data.get('account_name') or trigger.event.data.get('account_id', 'лицевого счёта') }},
-                                но числовое поле не приняло значение из выбранного сенсора.
+                            default:
+                              - service: notify.send_message
+                                target:
+                                  entity_id: !input notify_service
+                                data:
+                                  title: ДомРесурс — отправка пока отключена
+                                  message: >-
+                                    Срок подачи для {{ trigger.event.data.get('account_name') or trigger.event.data.get('account_id', 'лицевого счёта') }}:
+                                    осталось {{ trigger.event.data.get('days_remaining', '—') }} дн.
+                                    Значение {{ states(current_reading_sensor) | int(0) }} подготовлено,
+                                    но не отправлено: интеграция пока отключает кнопку до проверки API.
+                    default:
+                      - service: notify.send_message
+                        target:
+                          entity_id: !input notify_service
+                        data:
+                          title: ДомРесурс — показание не подготовлено
+                          message: >-
+                            Пришло событие срока подачи для
+                            {{ trigger.event.data.get('account_name') or trigger.event.data.get('account_id', 'лицевого счёта') }},
+                            но числовое поле не приняло значение из выбранного сенсора.
                   - stop: Автозаполнение завершено
-              - default:
-                  - service: notify.send_message
-                    target:
-                      entity_id: !input notify_service
-                    data:
-                      title: ДомРесурс — срок подачи показаний
-                      message: >-
-                        Для {{ trigger.event.data.get('account_name') or trigger.event.data.get('account_id', 'лицевого счёта') }}
-                        осталось {{ trigger.event.data.get('days_remaining', '—') }} дн.
-                        Автозаполнение не выполнено: внешний сенсор недоступен, значение меньше допустимого
-                        минимума или выбраны сущности другого счёта/шкалы.
+            default:
+              - service: notify.send_message
+                target:
+                  entity_id: !input notify_service
+                data:
+                  title: ДомРесурс — срок подачи показаний
+                  message: >-
+                    Для {{ trigger.event.data.get('account_name') or trigger.event.data.get('account_id', 'лицевого счёта') }}
+                    осталось {{ trigger.event.data.get('days_remaining', '—') }} дн.
+                    Автозаполнение не выполнено: внешний сенсор недоступен, значение меньше допустимого
+                    минимума или выбраны сущности другого счёта/шкалы.
 
 mode: queued
 max: 10
