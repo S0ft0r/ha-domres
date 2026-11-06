@@ -1,0 +1,41 @@
+name: Validate
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Local tests, Hassfest, and HACS
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Run unit tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Run local validator and release-state check
+        run: python scripts/validate.py --strict-release
+
+      - name: Hassfest
+        uses: home-assistant/actions/hassfest@master
+
+      - name: HACS validation
+        if: ${{ hashFiles('LICENSE*') != '' }}
+        uses: hacs/action@main
+        with:
+          category: integration
+
+      - name: Explain skipped HACS validation
+        if: ${{ hashFiles('LICENSE*') == '' }}
+        run: echo "HACS validation is deferred until the project license is selected."
