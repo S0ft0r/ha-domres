@@ -4,8 +4,8 @@ blueprint:
     Отправляет уведомления для событий domres_reading_deadline и domres_unpaid_bill.
     При событии о сроке берёт целое значение из выбранного внешнего сенсора и
     заполняет поле ДомРесурса. Кнопка вызывается только если выбранная кнопка
-    сообщает submission_enabled: true. Сейчас отправка интеграцией отключена,
-    поэтому blueprint лишь подготовит значение и уведомит, что оно не отправлено.
+    сообщает submission_enabled: true. Включите «Разрешить отправку» в Параметрах
+    интеграции для авто-отправки за 3–4 дня до дедлайна (по умолчанию выключено).
   domain: automation
   source_url: https://github.com/S0ft0r/ha-domres/blob/main/blueprint/domres.yaml
   input:
@@ -148,12 +148,12 @@ action:
                                 target:
                                   entity_id: !input notify_service
                                 data:
-                                  title: ДомРесурс — отправка пока отключена
+                                  title: ДомРесурс — отправка отключена в настройках
                                   message: >-
                                     Срок подачи для {{ trigger.event.data.get('account_name') or trigger.event.data.get('account_id', 'лицевого счёта') }}:
                                     осталось {{ trigger.event.data.get('days_remaining', '—') }} дн.
                                     Значение {{ states(current_reading_sensor) | int(0) }} подготовлено,
-                                    но не отправлено: интеграция пока отключает кнопку до проверки API.
+                                    но не отправлено: включите «Разрешить отправку» в Параметрах интеграции.
                     default:
                       - service: notify.send_message
                         target:
