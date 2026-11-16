@@ -42,13 +42,15 @@
   "options": {
     "step": {
       "init": {
-        "title": "Срок подачи показаний",
-        "description": "За сколько дней до конца периода формировать событие domres_reading_deadline. Событие срабатывает один раз на лицевой счёт за период.",
+        "title": "Срок подачи и отправка",
+        "description": "За сколько дней до конца периода формировать событие domres_reading_deadline и разрешать ли отправку через POST v8/accounts/{id}/meters/{registration}/reading.",
         "data": {
-          "deadline_days": "Дней до конца периода"
+          "deadline_days": "Дней до конца периода",
+          "submission_enabled": "Разрешить отправку показаний"
         },
         "data_description": {
-          "deadline_days": "Укажите от 1 до 7 дней до конца периода."
+          "deadline_days": "Укажите от 1 до 7 дней до конца периода.",
+          "submission_enabled": "Включите для авто-отправки из blueprint за 3–4 дня и ручной кнопки. По умолчанию выключено."
         }
       }
     }

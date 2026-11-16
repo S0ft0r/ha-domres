@@ -42,13 +42,15 @@
   "options": {
     "step": {
       "init": {
-        "title": "Reading deadline notification",
-        "description": "Choose how many days before the end of the reading period to raise domres_reading_deadline. The event is raised once per account while the period is active.",
+        "title": "Reading deadline and submission",
+        "description": "Choose how many days before the end of the reading period to raise domres_reading_deadline, and whether to allow automatic/manual submission via POST v8/accounts/{id}/meters/{registration}/reading.",
         "data": {
-          "deadline_days": "Days before the end of the period"
+          "deadline_days": "Days before the end of the period",
+          "submission_enabled": "Allow reading submission (auto via blueprint and manual button)"
         },
         "data_description": {
-          "deadline_days": "Enter 1–7 days before the end of the period."
+          "deadline_days": "Enter 1–7 days before the end of the period.",
+          "submission_enabled": "When enabled, the button will POST readings to DomRes. Use 3–4 days for auto blueprint."
         }
       }
     }

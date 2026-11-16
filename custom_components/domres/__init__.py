@@ -12,7 +12,9 @@ from .api import DomResApi
 from .const import (
     CONF_CUSTOMER,
     CONF_DEADLINE_DAYS,
+    CONF_SUBMISSION_ENABLED,
     DEFAULT_DEADLINE_DAYS,
+    DEFAULT_SUBMISSION_ENABLED,
     DOMAIN,
     normalize_deadline_days,
 )
@@ -55,6 +57,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         normalize_deadline_days(
             entry.options.get(CONF_DEADLINE_DAYS, DEFAULT_DEADLINE_DAYS)
         ),
+        bool(entry.options.get(CONF_SUBMISSION_ENABLED, DEFAULT_SUBMISSION_ENABLED)),
     )
     await coordinator.async_load_event_state()
     # Let DataUpdateCoordinator translate UpdateFailed into ConfigEntryNotReady.

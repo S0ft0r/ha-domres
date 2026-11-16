@@ -1,4 +1,4 @@
-"""Local numeric fields for preparing meter readings (no API submission)."""
+"""Local numeric fields for preparing meter readings with submission support."""
 
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ from .entity import account_device_info, meter_scale_key, reading_input_key
 
 
 class DomResReadingNumber(CoordinatorEntity[DomResCoordinator], NumberEntity):
-    """Editable local value for one meter scale; it does not submit to DomRes."""
+    """Editable local value for one meter scale; submits via coordinator when enabled."""
 
     _attr_has_entity_name = True
     _attr_icon = "mdi:counter"
@@ -109,7 +109,7 @@ class DomResReadingNumber(CoordinatorEntity[DomResCoordinator], NumberEntity):
             "previous_reading": self.previous_reading,
             "minimum_allowed": self.native_min_value,
             "value_set": self._input_key in self.coordinator.reading_values,
-            "submission_enabled": False,
+            "submission_enabled": self.coordinator.submission_enabled,
         }
 
     def _handle_coordinator_update(self) -> None:

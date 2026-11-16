@@ -1,4 +1,4 @@
-"""Preparation buttons for meter readings; network submission is not wired yet."""
+"""Buttons for meter readings with API submission."""
 
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
+from .api import DomResApiError
 from .const import DOMAIN
 from .coordinator import DomResCoordinator
 from .data import previous_reading_for_scale, reading_not_below_previous
@@ -18,7 +19,7 @@ from .entity import account_device_info, meter_scale_key, reading_input_key
 
 
 class DomResSubmitReadingButton(CoordinatorEntity[DomResCoordinator], ButtonEntity):
-    """Visible send-button scaffold that explicitly refuses to transmit data."""
+    """Send-button that submits reading via POST v8/.../reading when enabled."""
 
     _attr_has_entity_name = True
     _attr_icon = "mdi:invoice-text-send-outline"
@@ -36,6 +37,7 @@ class DomResSubmitReadingButton(CoordinatorEntity[DomResCoordinator], ButtonEnti
         self._account_id = str(snapshot["account_id"])
         self._input_key = reading_input_key(self._account_id, meter, scale, index)
         self._meter_id = str(meter.get("meter_id"))
+        self._meter_registration = str(meter.get("registration") or meter.get("meter_id") or "")
         self._scale_id = str(scale.get("scale_id"))
         self._initial_previous_reading = previous_reading_for_scale(
             [snapshot],
@@ -64,16 +66,17 @@ class DomResSubmitReadingButton(CoordinatorEntity[DomResCoordinator], ButtonEnti
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        """Expose identity and the current fail-closed sending capability."""
+        """Expose identity and the current sending capability (from options)."""
         return {
             "account_id": self._account_id,
             "meter_id": self._meter_id,
+            "meter_registration": self._meter_registration,
             "scale_id": self._scale_id,
-            "submission_enabled": False,
+            "submission_enabled": self.coordinator.submission_enabled,
         }
 
     async def async_press(self) -> None:
-        """Validate monotonicity, then fail closed until a write contract is verified."""
+        """Validate and submit the reading via the coordinator."""
         if self._input_key not in self.coordinator.reading_values:
             raise HomeAssistantError("Сначала введите показание в числовое поле.")
         value = self.coordinator.reading_values[self._input_key]
@@ -81,9 +84,20 @@ class DomResSubmitReadingButton(CoordinatorEntity[DomResCoordinator], ButtonEnti
             raise HomeAssistantError(
                 "Новое показание не может быть меньше предыдущего значения счётчика."
             )
-        raise HomeAssistantError(
-            "Показание не отправлено: передача пока отключена до проверки API-запроса."
-        )
+        if not self.coordinator.submission_enabled:
+            raise HomeAssistantError(
+                "Отправка отключена в настройках интеграции. Включите 'Разрешить отправку' в Параметрах."
+            )
+        if not self._meter_registration:
+            raise HomeAssistantError("Не найден registration счётчика для отправки")
+        try:
+            await self.coordinator.async_submit_reading(
+                self._account_id, self._meter_registration, self._scale_id, value
+            )
+        except HomeAssistantError:
+            raise
+        except DomResApiError as err:
+            raise HomeAssistantError(f"Ошибка отправки показания: {err}") from err
 
 
 async def async_setup_entry(
@@ -91,7 +105,7 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Create one guarded send-button stub per meter scale."""
+    """Create one send-button per meter scale."""
     coordinator: DomResCoordinator = hass.data[DOMAIN][entry.entry_id]
     entities: list[ButtonEntity] = []
     for snapshot in coordinator.data.get("accounts", []):

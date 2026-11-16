@@ -5,9 +5,11 @@ from datetime import timedelta
 DOMAIN = "domres"
 CONF_CUSTOMER = "customer"
 CONF_DEADLINE_DAYS = "deadline_days"
+CONF_SUBMISSION_ENABLED = "submission_enabled"
 DEFAULT_DEADLINE_DAYS = 3
 MIN_DEADLINE_DAYS = 1
 MAX_DEADLINE_DAYS = 7
+DEFAULT_SUBMISSION_ENABLED = False
 NAME = "ДомРесурс"
 API_BASE_URL = "https://domres.ru/api"
 

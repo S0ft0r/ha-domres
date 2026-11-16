@@ -1,7 +1,8 @@
-"""Async read-only DomRes API client.
+"""Async DomRes API client with reading submission support.
 
-The only POST in this module is the authentication request. Reading submission
-is intentionally not implemented.
+Authentication uses POST /api/v8/users/auth. Reading submission uses
+POST /api/v8/accounts/{accountId}/meters/{registration}/reading
+with body [{scaleId, value}]. All other data endpoints are GET.
 """
 
 from __future__ import annotations
@@ -37,6 +38,14 @@ class DomResNoAccounts(DomResApiError):
     """The authenticated user has no accessible accounts."""
 
 
+class DomResValidationError(DomResApiError):
+    """Server rejected the reading (validation, period, duplicate)."""
+
+
+class DomResSubmissionError(DomResApiError):
+    """Reading submission failed."""
+
+
 def _decode_response(text: str) -> Any:
     if not text:
         return None
@@ -55,7 +64,7 @@ def _account_id(account: dict[str, Any]) -> str | None:
 
 
 class DomResApi:
-    """Small async client exposing only confirmed read-only account endpoints."""
+    """Async client for DomRes accounts, balance, meters and reading submission."""
 
     def __init__(
         self,
@@ -159,6 +168,16 @@ class DomResApi:
                 payload=payload,
                 retry_auth=False,
             )
+        if status == 409:
+            raise DomResValidationError(
+                f"Показание уже принято или период закрыт для {path} (HTTP 409)"
+            )
+        if status == 400:
+            detail = _decode_response(text)
+            msg = detail if isinstance(detail, str) else str(detail)[:200]
+            raise DomResValidationError(
+                f"Сервер отклонил показание для {path} (HTTP 400): {msg}"
+            )
         if status < 200 or status >= 300:
             raise DomResApiError(f"Ошибка API ДомРесурса для {path} (HTTP {status})")
         return _decode_response(text)
@@ -176,7 +195,7 @@ class DomResApi:
         return [item for item in result if isinstance(item, dict)]
 
     async def async_get_account_snapshot(self, account: dict[str, Any]) -> dict[str, Any]:
-        """Fetch the known read-only balance, indication status, availability, and meter data."""
+        """Fetch the known balance, indication status, availability, and meter data."""
         account_id = _account_id(account)
         if account_id is None:
             raise DomResApiError("В ответе списка лицевых счетов нет идентификатора")
@@ -209,3 +228,25 @@ class DomResApi:
         if all(result[key] is None for key in endpoints):
             raise DomResApiError("Не удалось получить ни один набор данных лицевого счёта")
         return result
+
+    async def async_submit_reading(
+        self,
+        account_id: str,
+        registration: str,
+        readings: list[dict[str, Any]],
+    ) -> Any:
+        """Submit one or more scale readings for a meter.
+
+        account_id: from /v8/accounts/light
+        registration: meter registration from /v6/meters/info (id.registration)
+        readings: list of {scaleId: str, value: int}
+        Endpoint: POST /v8/accounts/{accountId}/meters/{registration}/reading
+        """
+        if not registration or not readings:
+            raise DomResValidationError("Не указаны счётчик или показания для отправки")
+        encoded_account = quote(str(account_id), safe="")
+        encoded_reg = quote(str(registration), safe="")
+        path = f"/v8/accounts/{encoded_account}/meters/{encoded_reg}/reading"
+        # Server expects array of {scaleId, value}
+        payload = [{"scaleId": str(r["scaleId"]), "value": int(r["value"])} for r in readings]
+        return await self._async_request("POST", path, payload=payload)

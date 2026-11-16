@@ -22,7 +22,9 @@ from .api import (
 from .const import (
     CONF_CUSTOMER,
     CONF_DEADLINE_DAYS,
+    CONF_SUBMISSION_ENABLED,
     DEFAULT_DEADLINE_DAYS,
+    DEFAULT_SUBMISSION_ENABLED,
     DOMAIN,
     MAX_DEADLINE_DAYS,
     MIN_DEADLINE_DAYS,
@@ -177,7 +179,7 @@ class DomResConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
 
 class DomResOptionsFlow(OptionsFlowWithReload):
-    """Configure how many days before the deadline the event is raised."""
+    """Configure deadline threshold and automatic submission."""
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
@@ -191,6 +193,11 @@ class DomResOptionsFlow(OptionsFlowWithReload):
                 DEFAULT_DEADLINE_DAYS,
             )
         )
+        default_submission = bool(
+            self.config_entry.options.get(
+                CONF_SUBMISSION_ENABLED, DEFAULT_SUBMISSION_ENABLED
+            )
+        )
         schema = vol.Schema(
             {
                 vol.Required(
@@ -199,13 +206,20 @@ class DomResOptionsFlow(OptionsFlowWithReload):
                 ): vol.All(
                     vol.Coerce(int),
                     vol.Range(min=MIN_DEADLINE_DAYS, max=MAX_DEADLINE_DAYS),
-                )
+                ),
+                vol.Required(
+                    CONF_SUBMISSION_ENABLED,
+                    default=default_submission,
+                ): bool,
             }
         )
         return self.async_show_form(
             step_id="init",
             data_schema=self.add_suggested_values_to_schema(
                 schema,
-                {CONF_DEADLINE_DAYS: default_days},
+                {
+                    CONF_DEADLINE_DAYS: default_days,
+                    CONF_SUBMISSION_ENABLED: default_submission,
+                },
             ),
         )

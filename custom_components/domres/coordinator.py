@@ -1,4 +1,4 @@
-"""Coordinator for read-only DomRes account data."""
+"""Coordinator for DomRes account data with reading submission."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ import logging
 from typing import Any
 
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
@@ -14,6 +15,7 @@ from .api import (
     DomResApiError,
     DomResAuthenticationError,
     DomResCannotConnect,
+    DomResValidationError,
     DomResVerificationRequired,
 )
 from .const import DOMAIN, NAME, UPDATE_INTERVAL
@@ -24,7 +26,7 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class DomResCoordinator(DataUpdateCoordinator[dict[str, Any]]):
-    """Fetch DomRes read-only account data on a low-frequency schedule."""
+    """Fetch DomRes account data and handle reading submission."""
 
     def __init__(
         self,
@@ -32,6 +34,7 @@ class DomResCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         api: DomResApi,
         entry_id: str,
         deadline_days: int,
+        submission_enabled: bool = False,
     ) -> None:
         super().__init__(
             hass,
@@ -42,9 +45,11 @@ class DomResCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.api = api
         self.entry_id = entry_id
         self._deadline_days = deadline_days
+        self.submission_enabled = submission_enabled
         self._event_store = Store(hass, 1, f"{DOMAIN}_{entry_id}_event_state")
         self.event_tracker = DomResEventTracker(deadline_days)
         self.reading_values: dict[str, int] = {}
+        self._last_submission_result: dict[str, Any] | None = None
 
     async def async_load_event_state(self) -> None:
         """Restore unpaid-event period markers before the first refresh."""
@@ -86,6 +91,12 @@ class DomResCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         "errors": raw.get("errors", {}),
                     }
                 )
+        except DomResAuthenticationError as err:
+            raise ConfigEntryAuthFailed(f"Ошибка авторизации ДомРесурса: {err}") from err
+        except DomResVerificationRequired as err:
+            raise ConfigEntryAuthFailed(f"Требуется проверка входа ДомРесурса: {err}") from err
+        except DomResCannotConnect as err:
+            raise UpdateFailed(f"Не удалось подключиться к ДомРесурсу: {err}") from err
         except DomResApiError as err:
             raise UpdateFailed(f"Не удалось получить данные ДомРесурса: {err}") from err
 
@@ -105,3 +116,39 @@ class DomResCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 {"entry_id": self.entry_id, **payload},
             )
         return {"accounts": snapshots}
+
+    async def async_submit_reading(
+        self,
+        account_id: str,
+        registration: str,
+        scale_id: str,
+        value: int,
+    ) -> Any:
+        """Submit a single scale reading via POST v8/.../reading."""
+        if not self.submission_enabled:
+            raise DomResValidationError("Отправка отключена в настройках интеграции")
+        _LOGGER.info(
+            "Submitting DomRes reading account=%s registration=%s scale=%s value=%s",
+            account_id,
+            registration,
+            scale_id,
+            value,
+        )
+        try:
+            result = await self.api.async_submit_reading(
+                account_id, registration, [{"scaleId": scale_id, "value": value}]
+            )
+        except DomResAuthenticationError as err:
+            raise ConfigEntryAuthFailed(f"Ошибка авторизации при отправке: {err}") from err
+        except DomResVerificationRequired as err:
+            raise ConfigEntryAuthFailed(f"Требуется проверка входа при отправке: {err}") from err
+        self._last_submission_result = {
+            "account_id": account_id,
+            "registration": registration,
+            "scale_id": scale_id,
+            "value": value,
+            "result": result,
+        }
+        # Refresh data so sensors (last readings) update
+        await self.async_request_refresh()
+        return result
