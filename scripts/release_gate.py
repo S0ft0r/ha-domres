@@ -11,26 +11,34 @@ import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION_PATTERN = re.compile(r"0\.1\.(\d+)(?:\.\d+)?")
-TAG_PATTERN = re.compile(r"v0\.1\.(\d+)(?:\.\d+)?")
+VERSION_PATTERN = re.compile(r"0\.1\.(\d+)(?:\.(\d+))?")
+TAG_PATTERN = re.compile(r"v0\.1\.(\d+)(?:\.(\d+))?")
 
 
-def patch_number(version: str) -> int:
+def patch_number(version: str) -> tuple[int, ...]:
     match = VERSION_PATTERN.fullmatch(version)
     if not match:
         raise ValueError(f"DomRes version must match 0.1.N, got {version!r}")
-    return int(match.group(1))
+    major = int(match.group(1))
+    minor = match.group(2)
+    if minor is not None:
+        return (major, int(minor))
+    return (major,)
 
 
 def should_release(version: str, tags: list[str]) -> tuple[bool, str]:
     """Return true only for a version newer than every existing DomRes release tag."""
     current_patch = patch_number(version)
     current_tag = f"v{version}"
-    parsed_tags = [
-        (tag, int(match.group(1)))
-        for tag in tags
-        if (match := TAG_PATTERN.fullmatch(tag))
-    ]
+    parsed_tags: list[tuple[str, tuple[int, ...]]] = []
+    for tag in tags:
+        m = TAG_PATTERN.fullmatch(tag)
+        if not m:
+            continue
+        major = int(m.group(1))
+        minor = m.group(2)
+        ver = (major, int(minor)) if minor is not None else (major,)
+        parsed_tags.append((tag, ver))
     if any(tag == current_tag for tag, _ in parsed_tags):
         return False, f"Release {current_tag} already exists"
     if parsed_tags:

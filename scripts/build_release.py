@@ -100,15 +100,22 @@ def _read_manifest(root: Path) -> dict[str, Any]:
     return value
 
 
-def _version_number(version: str) -> int:
-    match = re.fullmatch(r"0\.1\.(\d+)(?:\.\d+)?", version)
+def _version_number(version: str) -> tuple[int, ...]:
+    match = re.fullmatch(r"0\.1\.(\d+)(?:\.(\d+))?", version)
     if not match:
         raise BuildError(f"Version must match 0.1.N; got {version!r}")
-    return int(match.group(1))
+    major = int(match.group(1))
+    minor = match.group(2)
+    if minor is not None:
+        return (major, int(minor))
+    return (major,)
 
 
 def next_version(version: str) -> str:
-    return f"0.1.{_version_number(version) + 1}"
+    ver = _version_number(version)
+    if len(ver) == 2:
+        return f"0.1.{ver[0]}.{ver[1] + 1}"
+    return f"0.1.{ver[0] + 1}"
 
 
 def _hash_bytes(value: bytes) -> str:
@@ -303,10 +310,12 @@ def _git_tag_exists(root: Path, tag: str) -> bool:
 def build_delta_from_git(root: Path, base_tag: str) -> tuple[Path, list[str], list[str]]:
     """Build a true delta from the latest published tag when build state is absent."""
     root = root.resolve()
-    tag_match = re.fullmatch(r"v0\.1\.(\d+)(?:\.\d+)?", base_tag)
+    tag_match = re.fullmatch(r"v0\.1\.(\d+)(?:\.(\d+))?", base_tag)
     if not tag_match:
         raise BuildError(f"Base release tag must match v0.1.N; got {base_tag!r}")
-    base_version_number = int(tag_match.group(1))
+    base_major = int(tag_match.group(1))
+    base_minor = tag_match.group(2)
+    base_version_number = (base_major, int(base_minor)) if base_minor is not None else (base_major,)
     if _load_state(root) is not None:
         raise BuildError("Git-tag delta mode is only for checkouts without a build state")
 
