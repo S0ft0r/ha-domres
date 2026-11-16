@@ -1,12 +1,18 @@
 # История изменений
 
-# История изменений
+## [0.1.16.1] — исправлен перевод опции отправки
+
+- Исправлена ошибка `MISSING_VALUE` в Параметрах: убран плейсхолдер `{id}`/`{registration}` из `translations` (заменён на `...`), из-за которого `formatjs` требовал переменные.
+
+---
 
 ## [0.1.16] — полнофункциональная отправка показаний
 
 - Реализован `POST /api/v8/accounts/{accountId}/meters/{registration}/reading` (массив `[{scaleId, value}]`) по контракту из `chunk-QNFOA2UJ.js` (`setMeterReading`).
 - Добавлена опция `submission_enabled` в Параметры интеграции (по умолчанию выключено) для ручной кнопки и авто-отправки blueprint за 3–4 дня до дедлайна.
 - Кнопка `Отправить` теперь реально отправляет через `DomResCoordinator.async_submit_reading` с обработкой 400/409 и `ConfigEntryAuthFailed` для 401.
+- Обновлён `README` и `blueprint/domres.yaml` (описание авто-режима), переводы `ru/en/strings` и валидатор `scripts/validate.py` (разрешён 2-й POST).
+- Версия 0.1.16.
 
 ---
 

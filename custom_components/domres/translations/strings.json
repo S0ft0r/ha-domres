@@ -43,7 +43,7 @@
     "step": {
       "init": {
         "title": "Reading deadline and submission",
-        "description": "Choose how many days before the end of the reading period to raise domres_reading_deadline, and whether to allow automatic/manual submission via POST v8/accounts/{id}/meters/{registration}/reading.",
+        "description": "Choose how many days before the end of the reading period to raise domres_reading_deadline, and whether to allow automatic/manual submission via POST v8/accounts/.../meters/.../reading.",
         "data": {
           "deadline_days": "Days before the end of the period",
           "submission_enabled": "Allow reading submission (auto via blueprint and manual button)"

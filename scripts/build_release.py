@@ -101,7 +101,7 @@ def _read_manifest(root: Path) -> dict[str, Any]:
 
 
 def _version_number(version: str) -> int:
-    match = re.fullmatch(r"0\.1\.(\d+)", version)
+    match = re.fullmatch(r"0\.1\.(\d+)(?:\.\d+)?", version)
     if not match:
         raise BuildError(f"Version must match 0.1.N; got {version!r}")
     return int(match.group(1))
@@ -303,7 +303,7 @@ def _git_tag_exists(root: Path, tag: str) -> bool:
 def build_delta_from_git(root: Path, base_tag: str) -> tuple[Path, list[str], list[str]]:
     """Build a true delta from the latest published tag when build state is absent."""
     root = root.resolve()
-    tag_match = re.fullmatch(r"v0\.1\.(\d+)", base_tag)
+    tag_match = re.fullmatch(r"v0\.1\.(\d+)(?:\.\d+)?", base_tag)
     if not tag_match:
         raise BuildError(f"Base release tag must match v0.1.N; got {base_tag!r}")
     base_version_number = int(tag_match.group(1))

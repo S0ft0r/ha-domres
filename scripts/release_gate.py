@@ -11,8 +11,8 @@ import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION_PATTERN = re.compile(r"0\.1\.(\d+)")
-TAG_PATTERN = re.compile(r"v0\.1\.(\d+)")
+VERSION_PATTERN = re.compile(r"0\.1\.(\d+)(?:\.\d+)?")
+TAG_PATTERN = re.compile(r"v0\.1\.(\d+)(?:\.\d+)?")
 
 
 def patch_number(version: str) -> int:

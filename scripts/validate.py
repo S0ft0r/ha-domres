@@ -163,7 +163,7 @@ def validate(
         if manifest.get("iot_class") != "cloud_polling":
             errors.append("manifest.json iot_class must be cloud_polling")
         version = str(manifest.get("version", ""))
-        if not re.fullmatch(r"0\.1\.\d+", version):
+        if not re.fullmatch(r"0\.1\.\d+(?:\.\d+)?", version):
             errors.append("manifest.json version must match 0.1.N")
         if not isinstance(manifest.get("codeowners"), list):
             errors.append("manifest.json codeowners must be a list")

@@ -43,7 +43,7 @@
     "step": {
       "init": {
         "title": "Срок подачи и отправка",
-        "description": "За сколько дней до конца периода формировать событие domres_reading_deadline и разрешать ли отправку через POST v8/accounts/{id}/meters/{registration}/reading.",
+        "description": "За сколько дней до конца периода формировать событие domres_reading_deadline и разрешать ли отправку через POST v8/accounts/.../meters/.../reading.",
         "data": {
           "deadline_days": "Дней до конца периода",
           "submission_enabled": "Разрешить отправку показаний"
