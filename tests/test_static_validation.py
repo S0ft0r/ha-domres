@@ -110,11 +110,12 @@ class StaticValidationTests(unittest.TestCase):
             self.assertEqual(image[:8], b"\x89PNG\r\n\x1a\n")
             self.assertEqual(struct.unpack(">II", image[16:24]), expected_size)
 
-    def test_reading_input_button_is_visible_but_never_sends_network_requests(self) -> None:
+    def test_reading_input_button_is_visible_with_submission_support(self) -> None:
         component = Path(__file__).resolve().parents[1] / "custom_components/domres"
         setup_source = (component / "__init__.py").read_text(encoding="utf-8")
         button_source = (component / "button.py").read_text(encoding="utf-8")
         number_source = (component / "number.py").read_text(encoding="utf-8")
+        api_source = (component / "api.py").read_text(encoding="utf-8")
         self.assertIn("Platform.NUMBER", setup_source)
         self.assertIn("Platform.BUTTON", setup_source)
         self.assertIn("async def async_press", button_source)
@@ -130,10 +131,11 @@ class StaticValidationTests(unittest.TestCase):
         self.assertIn('self._attr_name = "Отправить"', button_source)
         self.assertIn('"account_id": self._account_id', number_source)
         self.assertIn('"minimum_allowed": self.native_min_value', number_source)
-        self.assertIn('"submission_enabled": False', button_source)
+        self.assertIn('"submission_enabled": self.coordinator.submission_enabled', button_source)
         self.assertIn('"account_id": self._account_id', button_source)
-        self.assertNotIn("coordinator.api", button_source)
-        self.assertNotIn("_async_request", button_source)
+        self.assertIn("coordinator.async_submit_reading", button_source)
+        self.assertIn("async_submit_reading", api_source)
+        self.assertIn("self._session.post(", api_source)
 
     def test_deadline_event_uses_configured_threshold(self) -> None:
         component = Path(__file__).resolve().parents[1] / "custom_components/domres"

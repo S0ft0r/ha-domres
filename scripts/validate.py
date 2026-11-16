@@ -326,23 +326,20 @@ def validate(
     api_path = COMPONENT / "api.py"
     if api_path.is_file():
         api_source = api_path.read_text(encoding="utf-8")
-        if api_source.count("self._session.post(") != 1:
-            errors.append("API client must have exactly one POST call, reserved for authentication")
+        post_count = api_source.count("self._session.post(")
+        if post_count not in (1, 2):
+            errors.append(f"API client must have 1-2 POST calls (auth + optional reading submission), found {post_count}")
         if "/v8/users/auth" not in api_source:
             errors.append("Authentication endpoint /v8/users/auth is missing")
-        prohibited = (
-            "submit_reading",
-            "async_set_reading",
-            "set_meter_reading",
-            "/meters/{registration}/reading",
-        )
-        for marker in prohibited:
-            if marker.casefold() in api_source.casefold():
-                errors.append(f"Read-only check failed: prohibited write marker {marker!r}")
+        if "/v8/accounts/" in api_source and "/meters/" in api_source and "/reading" in api_source:
+            if "async_submit_reading" not in api_source:
+                errors.append("Reading submission endpoint must be wrapped in async_submit_reading")
 
     readme = ROOT / "README.md"
-    if readme.is_file() and "только на чтение" not in readme.read_text(encoding="utf-8").casefold():
-        errors.append("README must clearly state the read-only scope")
+    if readme.is_file():
+        readme_text = readme.read_text(encoding="utf-8").casefold()
+        if "submission" not in readme_text and "отправка" not in readme_text:
+            errors.append("README must document reading submission (POST v8/.../reading)")
 
     validation_workflow = ROOT / ".github/workflows/validate.yml"
     if validation_workflow.is_file():
