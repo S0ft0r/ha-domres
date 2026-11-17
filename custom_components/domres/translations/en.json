@@ -50,7 +50,7 @@
         },
         "data_description": {
           "deadline_days": "Enter 1–7 days before the end of the period.",
-          "submission_enabled": "When enabled, the button will POST readings to DomRes. Use 3–4 days for auto blueprint."
+          "submission_enabled": "Fires the event for the specified number of days before the end of the period and enables manual reading submission via the integration UI. Disabled by default."
         }
       }
     }
