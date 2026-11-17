@@ -9,8 +9,8 @@ permissions:
   contents: read
 
 jobs:
-  validate:
-    name: Validate before publishing
+  local:
+    name: Local tests and validator
     runs-on: ubuntu-24.04
     steps:
       - name: Check out repository and tags
@@ -29,8 +29,29 @@ jobs:
       - name: Run local source validator
         run: python scripts/validate.py
 
+      - name: Require publication metadata
+        run: python scripts/validate.py --strict-publication
+
+  hassfest:
+    name: Hassfest
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out repository and tags
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
       - name: Hassfest
         uses: home-assistant/actions/hassfest@master
+
+  hacs:
+    name: HACS validation
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out repository and tags
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
       - name: HACS validation
         if: ${{ hashFiles('LICENSE*') != '' }}
@@ -38,12 +59,13 @@ jobs:
         with:
           category: integration
 
-      - name: Require publication metadata
-        run: python scripts/validate.py --strict-publication
+      - name: Explain skipped HACS validation
+        if: ${{ hashFiles('LICENSE*') == '' }}
+        run: echo "HACS validation is deferred until the project license is selected."
 
   release:
     name: Publish a newly validated version
-    needs: validate
+    needs: [local, hassfest, hacs]
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     permissions:

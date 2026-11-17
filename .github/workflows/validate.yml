@@ -9,8 +9,8 @@ permissions:
   contents: read
 
 jobs:
-  validate:
-    name: Local tests, Hassfest, and HACS
+  local:
+    name: Local tests and validator
     runs-on: ubuntu-24.04
     steps:
       - name: Check out repository
@@ -27,8 +27,22 @@ jobs:
       - name: Run local source validator
         run: python scripts/validate.py
 
+  hassfest:
+    name: Hassfest
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
       - name: Hassfest
         uses: home-assistant/actions/hassfest@master
+
+  hacs:
+    name: HACS validation
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
 
       - name: HACS validation
         if: ${{ hashFiles('LICENSE*') != '' }}
