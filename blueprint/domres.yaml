@@ -5,7 +5,7 @@ blueprint:
     При событии о сроке берёт целое значение из выбранного внешнего сенсора и
     заполняет поле ДомРесурса. Кнопка вызывается только если выбранная кнопка
     сообщает submission_enabled: true. Включите «Разрешить отправку» в Параметрах
-    интеграции для авто-отправки за 3–4 дня до дедлайна (по умолчанию выключено).
+    интеграции для авто-отправки за несколько дней до дедлайна (по умолчанию выключено).
   domain: automation
   source_url: https://github.com/S0ft0r/ha-domres/blob/main/blueprint/domres.yaml
   input:
@@ -141,8 +141,8 @@ action:
                                       title: ДомРесурс — срок подачи
                                       message: >-
                                         Для {{ trigger.event.data.get('account_name') or trigger.event.data.get('account_id', 'лицевого счёта') }}
-                                        подготовлено значение {{ states(current_reading_sensor) | int(0) }}.
-                                        Команда нажатия кнопки вызвана; проверьте результат на сайте ДомРесурса.
+                                        отправлено значение {{ states(current_reading_sensor) | int(0) }}.
+                                        Проверьте результат на сайте ДомРесурса.
                             default:
                               - service: notify.send_message
                                 target:
