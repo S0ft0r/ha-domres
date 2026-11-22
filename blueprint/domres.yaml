@@ -107,8 +107,8 @@ action:
                          and (number_meter | string) == (button_meter | string)
                          and number_scale is not none and button_scale is not none
                          and (number_scale | string) == (button_scale | string)
-                         and states(domres_number) not in ['unknown', 'unavailable']
-                         and states(domres_button) not in ['unknown', 'unavailable'] }}
+                         and states(domres_number) not in ['unknown', 'unavailable'] }}
+# and states(domres_button) not in ['unknown', 'unavailable'] 
                 sequence:
                   - service: number.set_value
                     target:
